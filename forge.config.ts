@@ -13,6 +13,7 @@ import { rendererConfig } from './webpack.renderer.config';
 
 const config: ForgeConfig = {
   packagerConfig: {
+    name: "MH app",
     asar: true,
   },
   rebuildConfig: {},
