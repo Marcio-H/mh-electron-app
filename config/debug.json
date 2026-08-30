@@ -1,3 +1,11 @@
 {
-    "WEB_URL": "http://localhost:4200/"
+    "WEB_URL": "http://localhost:4200/",
+    "WEB_CONFIGURATION": {
+        "WS_CONFIGURATION": [
+            {
+                "URL": "ws://localhost:3000",
+                "DESCRIPTION": "Angular Live Reload"
+            }
+        ]
+    }
 }
