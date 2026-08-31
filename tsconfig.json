@@ -7,11 +7,9 @@
     "esModuleInterop": true,
     "noImplicitAny": true,
     "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "paths": { "*": ["./node_modules/*"] }
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*", "webpack.plugins.ts"]
+  "include": ["src/**/*"]
 }
