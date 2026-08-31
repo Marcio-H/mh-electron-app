@@ -10,9 +10,14 @@ const ForkTsCheckerWebpackPlugin: typeof IForkTsCheckerWebpackPlugin = require('
 export const plugins = [
   new DefinePlugin({
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    'APP_CONFIG': JSON.stringify(require(path.resolve(__dirname, `./config/${process.env.APP_ENV || 'debug'}.json`)))
+    APP_CONFIG: JSON.stringify(
+      require(
+        path.resolve(
+          __dirname,
+          `./config/${process.env.APP_ENV || 'debug'}.json`
+        )
+      )
+    )
   }),
-  new ForkTsCheckerWebpackPlugin({
-    logger: 'webpack-infrastructure',
-  }),
+  new ForkTsCheckerWebpackPlugin({ logger: 'webpack-infrastructure' })
 ];

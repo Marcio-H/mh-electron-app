@@ -10,11 +10,7 @@ export const mainConfig: Configuration = {
    */
   entry: './src/electron/entry_point/main/index.ts',
   // Put your normal webpack config below here
-  module: {
-    rules,
-  },
+  module: { rules },
   plugins,
-  resolve: {
-    extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
-  },
+  resolve: { extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'] }
 };

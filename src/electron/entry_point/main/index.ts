@@ -12,8 +12,10 @@ if (require('electron-squirrel-startup')) {
 
 const createAppWebView = (): WebContentsView => {
   const appWebSession = session.fromPartition('persist:app-web-session');
-  const webWsUrls = APP_CONFIG.WEB_CONFIGURATION?.WS_CONFIGURATION?.map(c => c.URL).join(' ');
-  const cspValue = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${webWsUrls};`
+  const webWsUrls = APP_CONFIG.WEB_CONFIGURATION?.WS_CONFIGURATION?.map(
+    (it) => it.URL
+  ).join(' ');
+  const cspValue = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${webWsUrls};`;
 
   appWebSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -28,7 +30,7 @@ const createAppWebView = (): WebContentsView => {
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       session: appWebSession
-    },
+    }
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -45,15 +47,13 @@ const createAppWebView = (): WebContentsView => {
   appWebView.webContents.loadURL(APP_CONFIG.WEB_URL);
 
   return appWebView;
-}
+};
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
     height: 600,
     width: 800,
-    webPreferences: {
-      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
-    },
+    webPreferences: { preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY }
   });
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
@@ -72,7 +72,7 @@ const createWindow = (): void => {
 
   mainWindow.on('resize', updateWebViewSize);
 };
- 
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
