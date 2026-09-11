@@ -1,5 +1,6 @@
 {
   "env": { "browser": true, "es6": true, "node": true },
+  "plugins": ["prettier"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/eslint-recommended",
@@ -10,7 +11,10 @@
     "prettier"
   ],
   "parser": "@typescript-eslint/parser",
-  "rules": { "@typescript-eslint/no-var-requires": "off" },
+  "rules": {
+    "@typescript-eslint/no-var-requires": "off",
+    "prettier/prettier": "error"
+  },
   "overrides": [
     {
       "files": ["src/**/*.ts"],
