@@ -13,9 +13,6 @@ if (!isTestEnvironment && require('electron-squirrel-startup')) {
   app.quit();
 }
 
-// Enables DI before app is ready
-import 'reflect-metadata';
-
 const createAppWebView = (): WebContentsView => {
   const appWebSession = session.fromPartition('persist:app-web-session');
   const webWsUrls = APP_CONFIG.WEB_CONFIGURATION?.WS_CONFIGURATION?.map(

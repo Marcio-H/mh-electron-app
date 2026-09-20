@@ -11,8 +11,7 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
 
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "experimentalDecorators": true
   },
   "include": ["src/**/*"],
   "exclude": ["**/*.spec.ts"]

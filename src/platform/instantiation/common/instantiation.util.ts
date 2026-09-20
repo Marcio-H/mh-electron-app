@@ -1,54 +1,102 @@
-import { inject, registry as tsyringeRegistry } from 'tsyringe';
-import {
-  InjectionToken,
-  CONFIGURATION_REGISTRY,
-  IServiceIdentifier,
+import { Constructor } from '../../../base/functional.api';
+import { SyncDescriptor } from './descriptors';
+import type {
+  BrandedService,
   DIRegistry,
+  IServiceCollection,
+  IServiceIdentifier,
+  ServiceDependency,
+  ServiceEntry,
   SignedRegistry
 } from './instantiation.api';
-import { Constructor } from '../../../base/functional.api';
+import { ServiceCollection } from './service-collection';
 
-export function createServiceIdentifierDecorator<
-  T,
-  Args extends unknown[] = unknown[]
->(token: InjectionToken<T, Args>): IServiceIdentifier<T> {
+const serviceIdentifiers = new Map<
+  string | symbol,
+  IServiceIdentifier<unknown>
+>();
+
+const DI_TARGET = Symbol('di.target');
+
+const DI_DEPENDENCIES = Symbol('di.dependencies');
+
+interface DI_TARGET_OBJ extends Function {
+  [DI_TARGET]?: Function;
+  [DI_DEPENDENCIES]?: ServiceDependency[];
+}
+
+export function createServiceIdentifierDecorator<T extends BrandedService>(
+  name: string | symbol
+): IServiceIdentifier<T> {
+  const existing = serviceIdentifiers.get(name);
+
+  if (existing) {
+    return existing as IServiceIdentifier<T>;
+  }
+
   const decorator = function (
-    target: Constructor<T, Args>,
-    key: undefined,
+    target: DI_TARGET_OBJ,
+    _key: string | symbol | undefined,
     index: number
-  ) {
-    inject(token)(target, key, index);
-  };
+  ): void {
+    if (arguments.length !== 3) {
+      throw new Error(
+        `@${String(name)} can only be used to decorate a constructor parameter`
+      );
+    }
 
-  Object.defineProperty(decorator, 'token', { value: token, writable: false });
+    storeServiceDependency(decorator, target, index);
+  } as IServiceIdentifier<T>;
 
-  return decorator as IServiceIdentifier<T>;
+  decorator.toString = () => String(name);
+
+  serviceIdentifiers.set(name, decorator);
+
+  return decorator;
+}
+
+export function getServiceDependencies(
+  ctor: DI_TARGET_OBJ
+): ServiceDependency[] {
+  return ctor[DI_DEPENDENCIES] || [];
 }
 
 export function createRegistration<T>(config: DIRegistry<T>): SignedRegistry {
-  return config as never;
+  return config as SignedRegistry;
 }
 
-export function registry<TARGET_CLASS extends Constructor<unknown, never[]>>(
-  configurations?: SignedRegistry[]
-): (
-  target: TARGET_CLASS
-) => Constructor<
-  InstanceType<TARGET_CLASS> & { [CONFIGURATION_REGISTRY]: true },
-  never[]
-> {
-  return (target: TARGET_CLASS) => {
-    Object.defineProperty(target.prototype, CONFIGURATION_REGISTRY, {
-      value: true,
-      writable: false
-    });
+export function registry(
+  configurations: SignedRegistry[] = []
+): Constructor<IServiceCollection, []> {
+  return class extends ServiceCollection {
+    constructor() {
+      super();
 
-    const registrations = configurations?.map((config) => {
-      return { ...config, token: config.serviceIdentifier.token };
-    });
-
-    tsyringeRegistry(registrations as never)(target);
-
-    return target as never;
+      for (const config of configurations) {
+        this.set(config.serviceIdentifier, toServiceEntry(config));
+      }
+    }
   };
+}
+
+function storeServiceDependency(
+  id: IServiceIdentifier<unknown>,
+  target: DI_TARGET_OBJ,
+  index: number
+): void {
+  const dependencies =
+    target[DI_TARGET] === target ? (target[DI_DEPENDENCIES] ?? []) : [];
+
+  dependencies.push({ id, index });
+
+  target[DI_DEPENDENCIES] = dependencies;
+  target[DI_TARGET] = target;
+}
+
+function toServiceEntry<T>(config: DIRegistry<T>): ServiceEntry<T> {
+  if ('useClass' in config) {
+    return new SyncDescriptor(config.useClass, [], config.options?.lifecycle);
+  }
+
+  return config.useValue;
 }

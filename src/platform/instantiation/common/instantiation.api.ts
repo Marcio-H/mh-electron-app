@@ -1,4 +1,5 @@
 import { Constructor } from '../../../base/functional.api';
+import type { SyncDescriptor } from './descriptors';
 import { createServiceIdentifierDecorator } from './instantiation.util';
 
 // #region compiler symbols
@@ -9,15 +10,13 @@ export declare const DI_REGISTRY: unique symbol;
 
 export const IInstantiationService =
   createServiceIdentifierDecorator<IInstantiationService>(
-    Symbol('instantiationService')
+    'instantiationService'
   );
-
-export const CONFIGURATION_REGISTRY = Symbol('configurationRegistry');
 
 // #region interface
 
 export interface IInstantiationService extends BrandedService {
-  createInstance<T, Args extends unknown[]>(token: InjectionToken<T, Args>): T;
+  createInstance<T>(descriptor: SyncDescriptor<T>): T;
   createInstance<T, Args extends unknown[]>(
     constructor: Constructor<T, Args>,
     ...args: GetLeadingNonServiceArgs<Args>
@@ -27,48 +26,60 @@ export interface IInstantiationService extends BrandedService {
     fn: (accessor: IServicesAccessor, ...args: TS) => R,
     ...args: TS
   ): R;
+
+  createChild(services: IServiceCollection): IInstantiationService;
+}
+
+export interface IIInstantiationNode {
+  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> | undefined;
 }
 
 export interface IServicesAccessor {
-  get<T, Args extends unknown[]>(id: InjectionToken<T, Args>): T;
+  get<T>(id: IServiceIdentifier<T>): T;
 }
 
 export interface IServiceIdentifier<T> {
   (...args: unknown[]): void;
-  token: InjectionToken<T, unknown[]>;
   type: T;
 }
 
+export interface IServiceCollection {
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
+  get<T>(id: IServiceIdentifier<T>): ServiceEntry<T> | undefined;
+  has(id: IServiceIdentifier<unknown>): boolean;
+}
+
 export interface IRegistrationOptions {
-  lifecycle: InstantiationLyfecycle;
+  lifecycle: InstantiationLifecycle;
 }
 
 export interface IClassProvider<T> {
   useClass: Constructor<T, never[]>;
 }
 
-export interface ITokenProvider<T> {
-  useToken: InjectionToken<T, unknown[]>;
+export interface IValueProvider<T> {
+  useValue: T;
 }
 
 // #endregion
 
 // #region enum
 
-export enum InstantiationLyfecycle {
+export enum InstantiationLifecycle {
   Transient = 0,
-  Singleton = 1,
-  ResolutionScoped = 2
+  Singleton = 1
 }
 
 // #endregion
 
 // #region type
 
-export type InjectionToken<T, Args extends unknown[]> =
-  Constructor<T, Args> | string | symbol;
+export type ServiceEntry<T> = T | SyncDescriptor<T>;
 
-export type ConfigurationRegistry<T> = T & { [CONFIGURATION_REGISTRY]: true };
+export type ServiceDependency = {
+  id: IServiceIdentifier<unknown>;
+  index: number;
+};
 
 export type DIRegistry<T> = {
   serviceIdentifier: IServiceIdentifier<T>;
@@ -79,7 +90,7 @@ export type SignedRegistry = DIRegistry<unknown> & {
   readonly [DI_REGISTRY]: true;
 };
 
-export type Provider<T> = IClassProvider<T> | ITokenProvider<T>;
+export type Provider<T> = IClassProvider<T> | IValueProvider<T>;
 
 export type BrandedService = { _serviceBrand: undefined };
 
