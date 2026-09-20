@@ -17,12 +17,11 @@ export const IInstantiationService =
 // #region interface
 
 export interface IInstantiationService {
-  createInstance<T>(token: InjectionToken<T>): T;
-
-  createInstance<R, C extends Constructor<R>>(
-    constructor: C,
-    ...args: GetLeadingNonServiceArgs<ConstructorParameters<C>>
-  ): R;
+  createInstance<T, Args extends unknown[]>(token: InjectionToken<T, Args>): T;
+  createInstance<T, Args extends unknown[]>(
+    constructor: Constructor<T, Args>,
+    ...args: GetLeadingNonServiceArgs<Args>
+  ): T;
 
   invokeFunction<R, TS extends unknown[] = []>(
     fn: (accessor: IServicesAccessor, ...args: TS) => R,
@@ -31,12 +30,12 @@ export interface IInstantiationService {
 }
 
 export interface IServicesAccessor {
-  get<T>(id: InjectionToken<T>): T;
+  get<T, Args extends unknown[]>(id: InjectionToken<T, Args>): T;
 }
 
 export interface IServiceIdentifier<T> {
   (...args: unknown[]): void;
-  token: InjectionToken<T>;
+  token: InjectionToken<T, unknown[]>;
   type: T;
 }
 
@@ -49,7 +48,7 @@ export interface IClassProvider<T> {
 }
 
 export interface ITokenProvider<T> {
-  useToken: InjectionToken<T>;
+  useToken: InjectionToken<T, unknown[]>;
 }
 
 // #endregion
@@ -66,7 +65,8 @@ export enum InstantiationLyfecycle {
 
 // #region type
 
-export type InjectionToken<T> = Constructor<T> | string | symbol;
+export type InjectionToken<T, Args extends unknown[]> =
+  Constructor<T, Args> | string | symbol;
 
 export type ConfigurationRegistry<T> = T & { [CONFIGURATION_REGISTRY]: true };
 

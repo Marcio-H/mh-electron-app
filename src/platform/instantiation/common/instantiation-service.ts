@@ -1,4 +1,4 @@
-import { container } from 'tsyringe';
+import { container, InjectionToken as TsyringeInjectionToken } from 'tsyringe';
 import {
   ConfigurationRegistry,
   GetLeadingNonServiceArgs,
@@ -16,12 +16,15 @@ export class InstantiationService implements IInstantiationService {
     //
   }
 
-  createInstance<T>(token: InjectionToken<T>): T;
-  createInstance<R, C extends Constructor<R>>(
-    constructor: C,
-    ...args: GetLeadingNonServiceArgs<ConstructorParameters<C>>
-  ): R;
-  createInstance<R>(token: InjectionToken<R>, ...args: unknown[]): R {
+  createInstance<T, Args extends unknown[]>(token: InjectionToken<T, Args>): T;
+  createInstance<T, Args extends unknown[]>(
+    constructor: Constructor<T, Args>,
+    ...args: GetLeadingNonServiceArgs<Args>
+  ): T;
+  createInstance<T, Args extends unknown[]>(
+    token: InjectionToken<T, Args>,
+    ...args: unknown[]
+  ): T {
     if (!args.length) return container.resolve(token);
 
     const child = container.createChildContainer();
@@ -49,7 +52,7 @@ export class InstantiationService implements IInstantiationService {
     let _done = false;
     try {
       const accessor: IServicesAccessor = {
-        get: <T>(id: InjectionToken<T>) => {
+        get: <T, Args extends unknown[]>(id: InjectionToken<T, Args>) => {
           if (_done) {
             throw Error(
               'service accessor is only valid during the invocation of its target method'

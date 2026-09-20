@@ -1,3 +1,1 @@
-export type Constructor<T, Args extends unknown[] = unknown[]> = {
-  new (...args: Args): T;
-};
+export type Constructor<T, Args extends unknown[]> = { new (...args: Args): T };
