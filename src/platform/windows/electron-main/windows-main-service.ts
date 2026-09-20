@@ -10,6 +10,9 @@ import {
 export class WindowsMainService implements IWindowsMainService {
   //
 
+  // brand
+  declare readonly _serviceBrand: undefined;
+
   constructor(
     @IInstantiationService private readonly insta: IInstantiationService
   ) {}

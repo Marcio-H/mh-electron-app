@@ -2,13 +2,14 @@ import { NativeParsedArgs } from '../../environment/common/argv';
 import { IOpenEmptyWindowOptions } from '../../window/common/window.api';
 import { IMHWindow } from '../../window/electron-main/window.api';
 import { createServiceIdentifierDecorator } from '../../instantiation/common/instantiation.util';
+import { BrandedService } from '../../instantiation/common/instantiation.api';
 
 export const IWindowsMainService =
   createServiceIdentifierDecorator<IWindowsMainService>(
     Symbol('IWindowsMainService')
   );
 
-export interface IWindowsMainService {
+export interface IWindowsMainService extends BrandedService {
   //
 
   open(openConfig: IOpenConfiguration): Promise<IMHWindow[]>;

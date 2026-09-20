@@ -3,8 +3,6 @@ import { createServiceIdentifierDecorator } from './instantiation.util';
 
 // #region compiler symbols
 
-export declare const CONFIGURATION_REGISTRY: unique symbol;
-
 export declare const DI_REGISTRY: unique symbol;
 
 // #endregion
@@ -14,9 +12,11 @@ export const IInstantiationService =
     Symbol('instantiationService')
   );
 
+export const CONFIGURATION_REGISTRY = Symbol('configurationRegistry');
+
 // #region interface
 
-export interface IInstantiationService {
+export interface IInstantiationService extends BrandedService {
   createInstance<T, Args extends unknown[]>(token: InjectionToken<T, Args>): T;
   createInstance<T, Args extends unknown[]>(
     constructor: Constructor<T, Args>,
