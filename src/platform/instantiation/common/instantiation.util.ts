@@ -8,11 +8,12 @@ import {
 } from './instantiation.api';
 import { Constructor } from '../../../base/functional.api';
 
-export function createServiceIdentifierDecorator<T>(
-  token: InjectionToken<T>
-): IServiceIdentifier<T> {
+export function createServiceIdentifierDecorator<
+  T,
+  Args extends unknown[] = unknown[]
+>(token: InjectionToken<T, Args>): IServiceIdentifier<T> {
   const decorator = function (
-    target: Constructor<T>,
+    target: Constructor<T, Args>,
     key: undefined,
     index: number
   ) {
@@ -28,12 +29,13 @@ export function createRegistration<T>(config: DIRegistry<T>): SignedRegistry {
   return config as never;
 }
 
-export function registry<TARGET_CLASS extends Constructor<unknown>>(
+export function registry<TARGET_CLASS extends Constructor<unknown, never[]>>(
   configurations?: SignedRegistry[]
 ): (
   target: TARGET_CLASS
 ) => Constructor<
-  InstanceType<TARGET_CLASS> & { [CONFIGURATION_REGISTRY]: true }
+  InstanceType<TARGET_CLASS> & { [CONFIGURATION_REGISTRY]: true },
+  never[]
 > {
   return (target: TARGET_CLASS) => {
     Object.defineProperty(target.prototype, CONFIGURATION_REGISTRY, {

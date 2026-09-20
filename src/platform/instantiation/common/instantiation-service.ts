@@ -1,4 +1,4 @@
-import { container, InjectionToken as TsyringeInjectionToken } from 'tsyringe';
+import { container } from 'tsyringe';
 import {
   ConfigurationRegistry,
   GetLeadingNonServiceArgs,
