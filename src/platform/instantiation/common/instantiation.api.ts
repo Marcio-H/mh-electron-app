@@ -50,7 +50,8 @@ export interface IServiceCollection {
 }
 
 export interface IRegistrationOptions {
-  lifecycle: InstantiationLifecycle;
+  lifecycle?: InstantiationLifecycle;
+  supportsDelayedInstantiation?: boolean;
 }
 
 export interface IClassProvider<T> {

@@ -95,7 +95,12 @@ function storeServiceDependency(
 
 function toServiceEntry<T>(config: DIRegistry<T>): ServiceEntry<T> {
   if ('useClass' in config) {
-    return new SyncDescriptor(config.useClass, [], config.options?.lifecycle);
+    return new SyncDescriptor(
+      config.useClass,
+      [],
+      config.options?.lifecycle,
+      config.options?.supportsDelayedInstantiation
+    );
   }
 
   return config.useValue;
