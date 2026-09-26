@@ -1,3 +1,4 @@
+import { IdleValue } from '../../../base/common/async';
 import { Constructor } from '../../../base/functional.api';
 import { SyncDescriptor } from './descriptors';
 import {
@@ -42,13 +43,13 @@ export class InstantiationService
     ...args: unknown[]
   ): T {
     if (ctorOrDescriptor instanceof SyncDescriptor) {
-      return this.createInstanceOf(
+      return this._createInstance(
         ctorOrDescriptor.ctor,
         ctorOrDescriptor.staticArguments.concat(args)
       );
     }
 
-    return this.createInstanceOf(ctorOrDescriptor, args);
+    return this._createInstance(ctorOrDescriptor, args);
   }
 
   invokeFunction<R, TS extends unknown[] = []>(
@@ -66,7 +67,7 @@ export class InstantiationService
             );
           }
 
-          const service = this.getOrCreateServiceInstance(id);
+          const service = this._getOrCreateServiceInstance(id);
 
           if (service === undefined) {
             throw new Error(`[invokeFunction] unknown service '${String(id)}'`);
@@ -90,33 +91,17 @@ export class InstantiationService
     return this.services.get(id) || this.parent?.getServiceEntry(id);
   }
 
-  private createInstanceOf<T>(
+  private _createInstance<T>(
     ctor: Constructor<T, never[]>,
     args: unknown[]
   ): T {
-    const dependencies = [...getServiceDependencies(ctor)].sort(
+    const serviceDependencies = getServiceDependencies(ctor).sort(
       (a, b) => a.index - b.index
     );
-    const firstServiceArgPos = dependencies.length
-      ? dependencies[0].index
-      : args.length;
+    const serviceArgs = serviceDependencies.map((dependency) => {
+      const service = this._getOrCreateServiceInstance(dependency.id);
 
-    if (args.length !== firstServiceArgPos) {
-      throw new Error(
-        `[createInstance] ${ctor.name} expects ${firstServiceArgPos} leading non-service argument(s) but received ${args.length}`
-      );
-    }
-
-    const serviceArgs = dependencies.map((dependency, position) => {
-      if (dependency.index !== firstServiceArgPos + position) {
-        throw new Error(
-          `[createInstance] ${ctor.name} has a service parameter at index ${dependency.index} before a non-service parameter`
-        );
-      }
-
-      const service = this.getOrCreateServiceInstance(dependency.id);
-
-      if (service === undefined) {
+      if (!service) {
         throw new Error(
           `[createInstance] ${ctor.name} depends on unknown service '${String(dependency.id)}'`
         );
@@ -125,37 +110,54 @@ export class InstantiationService
       return service;
     });
 
-    return new ctor(...(args.concat(serviceArgs) as never[]));
+    const firstServiceArgPos = serviceDependencies.length
+      ? serviceDependencies[0].index
+      : args.length;
+
+    // check for argument mismatches, adjust static optional args if needed
+    if (args.length !== firstServiceArgPos) {
+      console.trace(
+        `[createInstance] First service dependency of ${ctor.name} at position ${firstServiceArgPos + 1} conflicts with ${args.length} static arguments`
+      );
+
+      const delta = firstServiceArgPos - args.length;
+
+      if (delta > 0) {
+        args = args.concat(new Array(delta));
+      } else {
+        args = args.slice(0, firstServiceArgPos);
+      }
+    }
+
+    return Reflect.construct(ctor, args.concat(serviceArgs));
   }
 
-  private getOrCreateServiceInstance<T>(
+  private _getOrCreateServiceInstance<T>(
     id: IServiceIdentifier<T>
   ): T | undefined {
     const entry = this.getServiceEntry(id);
 
     if (entry instanceof SyncDescriptor) {
-      return this.createServiceInstance(id, entry);
+      return this._safeCreateAndCacheServiceInstance(id, entry);
     }
 
     return entry;
   }
 
-  private createServiceInstance<T>(
+  private _safeCreateAndCacheServiceInstance<T>(
     id: IServiceIdentifier<T>,
     descriptor: SyncDescriptor<T>
   ): T {
     if (this.activeInstantiations.has(id)) {
-      const cycle = [...this.activeInstantiations, id].map(String).join(' -> ');
-
       throw new Error(
-        `[createInstance] cyclic dependency between services: ${cycle}`
+        `illegal state, recursively instantiating service '${String(id)}'`
       );
     }
 
     this.activeInstantiations.add(id);
 
     try {
-      const instance = this.createInstanceOf(
+      const instance = this._createInstance(
         descriptor.ctor,
         descriptor.staticArguments
       );
@@ -168,5 +170,12 @@ export class InstantiationService
     } finally {
       this.activeInstantiations.delete(id);
     }
+  }
+
+  private _createAndCacheServiceInstance<T>(
+    id: IServiceIdentifier<T>,
+    descriptor: SyncDescriptor<T>
+  ): T {
+    // TODO: impl
   }
 }

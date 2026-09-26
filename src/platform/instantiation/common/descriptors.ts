@@ -5,6 +5,7 @@ export class SyncDescriptor<T> {
   constructor(
     readonly ctor: Constructor<T, never[]>,
     readonly staticArguments: unknown[] = [],
-    readonly lifecycle: InstantiationLifecycle = InstantiationLifecycle.Singleton
+    readonly lifecycle: InstantiationLifecycle = InstantiationLifecycle.Singleton,
+    readonly supportsDelayedInstantiation: boolean = false
   ) {}
 }
