@@ -1,40 +1,78 @@
-import { IDisposable, toDisposable } from './lifecycle';
+import { IDisposable } from './lifecycle';
+import { setTimeout0 } from './platform';
 
 export interface IIdleDeadline {
   readonly didTimeout: boolean;
   timeRemaining(): number;
 }
 
+export type IdleApi = Pick<
+  typeof globalThis,
+  'requestIdleCallback' | 'cancelIdleCallback'
+>;
+
 export function runWhenIdle(
-  // TODO: IdleApi
-  callback: (deadline: IIdleDeadline) => void,
+  targetWindow: IdleApi,
+  callback: (idle: IIdleDeadline) => void,
   timeout?: number
 ): IDisposable {
+  let disposed = false;
+
   if (
-    typeof requestIdleCallback === 'function' &&
-    typeof cancelIdleCallback === 'function'
+    typeof targetWindow.requestIdleCallback === 'function' &&
+    typeof targetWindow.cancelIdleCallback === 'function'
   ) {
-    const handle = requestIdleCallback(
-      callback,
+    const handle = targetWindow.requestIdleCallback(
+      (deadline) => {
+        if (!disposed) {
+          callback(deadline);
+        }
+      },
       typeof timeout === 'number' ? { timeout } : undefined
     );
 
-    return toDisposable(() => cancelIdleCallback(handle));
+    return {
+      dispose() {
+        if (!disposed) {
+          disposed = true;
+          targetWindow.cancelIdleCallback(handle);
+        }
+      }
+    };
   }
 
-  const handle = setTimeout(() => {
-    const end = Date.now() + 15;
+  setTimeout0(() => {
+    if (disposed) {
+      return;
+    }
 
-    callback({
-      didTimeout: true,
-      timeRemaining: () => Math.max(0, end - Date.now())
-    });
+    const start = Date.now();
+    const end = start + 15; // one frame at 64fps
+    const deadline: IIdleDeadline = {
+      didTimeout: typeof timeout === 'number' && timeout <= 0,
+      timeRemaining() {
+        return Math.max(0, end - start);
+      }
+    };
+
+    callback(Object.freeze(deadline));
   });
 
-  return toDisposable(() => clearTimeout(handle));
+  return {
+    dispose() {
+      disposed = true;
+    }
+  };
 }
 
-export class IdleValue<T> {
+export function runWhenGlobalIdle(
+  callback: (idle: IIdleDeadline) => void,
+  timeout?: number
+): IDisposable {
+  return runWhenIdle(globalThis, callback, timeout);
+}
+
+export abstract class AbstractIdleValue<T> {
   private readonly executor: () => void;
 
   private readonly handle: IDisposable;
@@ -45,18 +83,18 @@ export class IdleValue<T> {
 
   private error?: unknown;
 
-  constructor(executor: () => T) {
+  constructor(targetWindow: IdleApi, executor: () => T) {
     this.executor = () => {
       try {
         this.result = executor();
-      } catch (error) {
-        this.error = error;
+      } catch (err) {
+        this.error = err;
       } finally {
         this.didRun = true;
       }
     };
 
-    this.handle = runWhenIdle(() => this.executor());
+    this.handle = runWhenIdle(targetWindow, () => this.executor());
   }
 
   dispose(): void {
@@ -78,5 +116,17 @@ export class IdleValue<T> {
 
   get isInitialized(): boolean {
     return this.didRun;
+  }
+}
+
+/**
+ * An `IdleValue` that always uses the current window (which might be throttled or inactive)
+ *
+ * **Note** that there is `dom.ts#WindowIdleValue` which is better suited when running inside a browser
+ * context
+ */
+export class GlobalIdleValue<T> extends AbstractIdleValue<T> {
+  constructor(executor: () => T) {
+    super(globalThis, executor);
   }
 }
