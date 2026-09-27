@@ -30,7 +30,7 @@ export interface IInstantiationService extends BrandedService {
   createChild(services: IServiceCollection): IInstantiationService;
 }
 
-export interface IIInstantiationNode {
+export interface IInstantiationNode {
   getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> | undefined;
 }
 
