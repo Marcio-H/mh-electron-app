@@ -1,7 +1,7 @@
 import { GlobalIdleValue } from '../../../base/common/async';
+import { EOL } from '../../../base/common/platform';
 import { Constructor } from '../../../base/functional.api';
 import { SyncDescriptor } from './descriptors';
-import { EOL } from 'os'; // TODO: platform OS import remove
 import {
   GetLeadingNonServiceArgs,
   IInstantiationNode,
@@ -29,9 +29,12 @@ export class InstantiationService
 
   constructor(
     private readonly services: IServiceCollection = new ServiceCollection(),
-    private readonly parent?: IInstantiationNode
+    private readonly parent?: IInstantiationNode,
+    registerItself = true
   ) {
-    this.services.set(IInstantiationService, this);
+    if (registerItself) {
+      this.services.set(IInstantiationService, this);
+    }
   }
 
   createInstance<T>(descriptor: SyncDescriptor<T>): T;
@@ -82,9 +85,10 @@ export class InstantiationService
   }
 
   createChild(
-    services: IServiceCollection
+    services: IServiceCollection,
+    registerChild = true
   ): IInstantiationService & IInstantiationNode {
-    return new InstantiationService(services, this);
+    return new InstantiationService(services, this, registerChild);
   }
 
   getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> {
@@ -231,7 +235,7 @@ export class InstantiationService
               break;
             case InstantiationLifecycle.Transient:
               if (!child) {
-                child = this.createChild(new ServiceCollection());
+                child = this.createChild(new ServiceCollection(), false);
               }
 
               child.set(
@@ -318,7 +322,7 @@ export class InstantiationService
           if (typeof property === 'function') {
             const boundFn = property.bind(obj);
 
-            Reflect.set(target, key, boundFn, receiver);
+            Reflect.set(target, key, boundFn);
             return boundFn;
           }
 

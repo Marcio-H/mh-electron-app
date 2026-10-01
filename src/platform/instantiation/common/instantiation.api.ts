@@ -104,14 +104,10 @@ export type Provider<T> = IClassProvider<T> | IValueProvider<T>;
 
 export type BrandedService = { _serviceBrand: undefined };
 
-export type GetLeadingNonServiceArgs<TArgs extends unknown[]> = TArgs extends [
-  ...BrandedService[]
-]
+export type GetLeadingNonServiceArgs<TArgs extends unknown[]> = TArgs extends []
   ? []
-  : TArgs extends [infer A, ...BrandedService[]]
-    ? [A]
-    : TArgs extends [infer A, ...infer R]
-      ? [A, ...GetLeadingNonServiceArgs<R>]
-      : [];
+  : TArgs extends [...infer TFirst, BrandedService]
+    ? GetLeadingNonServiceArgs<TFirst>
+    : TArgs;
 
 //#endregion
