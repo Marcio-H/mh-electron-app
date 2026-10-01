@@ -1,9 +1,10 @@
-import { IdleValue } from '../../../base/common/async';
+import { GlobalIdleValue } from '../../../base/common/async';
 import { Constructor } from '../../../base/functional.api';
 import { SyncDescriptor } from './descriptors';
+import { EOL } from 'os'; // TODO: platform OS import remove
 import {
   GetLeadingNonServiceArgs,
-  IIInstantiationNode,
+  IInstantiationNode,
   IInstantiationService,
   InstantiationLifecycle,
   IServiceCollection,
@@ -15,7 +16,7 @@ import { getServiceDependencies } from './instantiation.util';
 import { ServiceCollection } from './service-collection';
 
 export class InstantiationService
-  implements IInstantiationService, IIInstantiationNode
+  implements IInstantiationService, IInstantiationNode
 {
   //
 
@@ -28,7 +29,7 @@ export class InstantiationService
 
   constructor(
     private readonly services: IServiceCollection = new ServiceCollection(),
-    private readonly parent?: IIInstantiationNode
+    private readonly parent?: IInstantiationNode
   ) {
     this.services.set(IInstantiationService, this);
   }
@@ -45,11 +46,12 @@ export class InstantiationService
     if (ctorOrDescriptor instanceof SyncDescriptor) {
       return this._createInstance(
         ctorOrDescriptor.ctor,
-        ctorOrDescriptor.staticArguments.concat(args)
+        ctorOrDescriptor.staticArguments.concat(args),
+        this
       );
     }
 
-    return this._createInstance(ctorOrDescriptor, args);
+    return this._createInstance(ctorOrDescriptor, args, this);
   }
 
   invokeFunction<R, TS extends unknown[] = []>(
@@ -67,11 +69,7 @@ export class InstantiationService
             );
           }
 
-          const service = this._getOrCreateServiceInstance(id);
-
-          if (service === undefined) {
-            throw new Error(`[invokeFunction] unknown service '${String(id)}'`);
-          }
+          const service = this._getOrCreateServiceInstance(id, this);
 
           return service;
         }
@@ -83,31 +81,78 @@ export class InstantiationService
     }
   }
 
-  createChild(services: IServiceCollection): IInstantiationService {
+  createChild(
+    services: IServiceCollection
+  ): IInstantiationService & IInstantiationNode {
     return new InstantiationService(services, this);
   }
 
-  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> | undefined {
-    return this.services.get(id) || this.parent?.getServiceEntry(id);
+  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> {
+    const entry = this.services.get(id) || this.parent?.getServiceEntry(id);
+
+    if (!entry) {
+      throw new Error(`unknown service '${id.toString()}'`);
+    }
+
+    return entry;
+  }
+
+  createAndCacheServiceInstance<T>(
+    id: IServiceIdentifier<T>,
+    ctor: Constructor<T, never[]>,
+    args: unknown[] = [],
+    instantiationNode: IInstantiationNode | undefined,
+    lifecycle: InstantiationLifecycle,
+    supportsDelayedInstantiation: boolean
+  ): T {
+    const entry = this.services.get(id);
+
+    if (entry instanceof SyncDescriptor) {
+      const instance = this._createServiceInstance(
+        id,
+        ctor,
+        args,
+        instantiationNode,
+        supportsDelayedInstantiation
+      );
+
+      if (lifecycle == InstantiationLifecycle.Singleton) {
+        this.services.set(id, instance);
+      }
+
+      return instance;
+    } else if (entry) {
+      return entry;
+    } else if (this.parent) {
+      return this.parent.createAndCacheServiceInstance(
+        id,
+        ctor,
+        args,
+        instantiationNode,
+        lifecycle,
+        supportsDelayedInstantiation
+      );
+    } else {
+      throw new Error(
+        `illegalState - creating UNKNOWN service instance ${ctor.name}`
+      );
+    }
+  }
+
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
+    this.services.set(id, entry);
   }
 
   private _createInstance<T>(
     ctor: Constructor<T, never[]>,
-    args: unknown[]
+    args: unknown[],
+    node: IInstantiationNode
   ): T {
     const serviceDependencies = getServiceDependencies(ctor).sort(
       (a, b) => a.index - b.index
     );
     const serviceArgs = serviceDependencies.map((dependency) => {
-      const service = this._getOrCreateServiceInstance(dependency.id);
-
-      if (!service) {
-        throw new Error(
-          `[createInstance] ${ctor.name} depends on unknown service '${String(dependency.id)}'`
-        );
-      }
-
-      return service;
+      return this._getOrCreateServiceInstance(dependency.id, node);
     });
 
     const firstServiceArgPos = serviceDependencies.length
@@ -133,21 +178,19 @@ export class InstantiationService
   }
 
   private _getOrCreateServiceInstance<T>(
-    id: IServiceIdentifier<T>
-  ): T | undefined {
-    const entry = this.getServiceEntry(id);
+    id: IServiceIdentifier<T>,
+    node: IInstantiationNode
+  ): T {
+    const entry = node.getServiceEntry(id);
 
     if (entry instanceof SyncDescriptor) {
-      return this._safeCreateAndCacheServiceInstance(id, entry);
+      return this._safeCreateAndCacheServiceInstance(id);
     }
 
     return entry;
   }
 
-  private _safeCreateAndCacheServiceInstance<T>(
-    id: IServiceIdentifier<T>,
-    descriptor: SyncDescriptor<T>
-  ): T {
+  private _safeCreateAndCacheServiceInstance<T>(id: IServiceIdentifier<T>): T {
     if (this.activeInstantiations.has(id)) {
       throw new Error(
         `illegal state, recursively instantiating service '${String(id)}'`
@@ -157,25 +200,241 @@ export class InstantiationService
     this.activeInstantiations.add(id);
 
     try {
-      const instance = this._createInstance(
-        descriptor.ctor,
-        descriptor.staticArguments
-      );
-
-      if (descriptor.lifecycle === InstantiationLifecycle.Singleton) {
-        this.services.set(id, instance);
-      }
-
-      return instance;
+      return this._createAndCacheServiceInstance(id);
     } finally {
       this.activeInstantiations.delete(id);
     }
   }
 
-  private _createAndCacheServiceInstance<T>(
-    id: IServiceIdentifier<T>,
-    descriptor: SyncDescriptor<T>
+  private _createAndCacheServiceInstance<T>(id: IServiceIdentifier<T>): T {
+    const visiting = new Set<IServiceIdentifier<unknown>>();
+    const resolve = (currId: IServiceIdentifier<unknown>) => {
+      const entry = this.getServiceEntry(currId);
+
+      if (!(entry instanceof SyncDescriptor)) return entry;
+
+      if (visiting.has(currId)) {
+        throw CyclicDependencyError.from(currId, entry);
+      }
+
+      visiting.add(currId);
+
+      let child: (IInstantiationService & IInstantiationNode) | undefined;
+
+      for (const dependency of getServiceDependencies(entry.ctor)) {
+        const dependencyEntry = this.getServiceEntry(dependency.id);
+
+        if (dependencyEntry instanceof SyncDescriptor) {
+          switch (dependencyEntry.lifecycle) {
+            case InstantiationLifecycle.Singleton:
+              resolveWithCycleTracking(dependency.id, dependencyEntry);
+              break;
+            case InstantiationLifecycle.Transient:
+              if (!child) {
+                child = this.createChild(new ServiceCollection());
+              }
+
+              child.set(
+                dependency.id,
+                resolveWithCycleTracking(dependency.id, dependencyEntry)
+              );
+              break;
+            default:
+              throw new Error(`lifecycle ${dependencyEntry.lifecycle} unknow`);
+          }
+        }
+      }
+
+      const instance = this.createAndCacheServiceInstance(
+        currId,
+        entry.ctor,
+        entry.staticArguments,
+        child,
+        entry.lifecycle,
+        entry.supportsDelayedInstantiation
+      );
+
+      visiting.delete(currId);
+      return instance;
+    };
+    const resolveWithCycleTracking = (
+      currId: IServiceIdentifier<unknown>,
+      descriptor: SyncDescriptor<unknown>
+    ) => {
+      try {
+        return resolve(currId);
+      } catch (err) {
+        if (err instanceof CyclicDependencyError) {
+          err.add(currId, descriptor);
+        }
+        throw err;
+      }
+    };
+
+    try {
+      return resolve(id);
+    } catch (err) {
+      // TODO: improve this nested if statament
+      if (err instanceof CyclicDependencyError) {
+        throw CyclicDependencyError.from(err);
+      }
+
+      throw err;
+    }
+  }
+
+  private _createServiceInstance<T>(
+    _id: IServiceIdentifier<T>,
+    ctor: Constructor<T, never[]>,
+    args: unknown[] = [],
+    instantiationNode: IInstantiationNode | undefined,
+    supportsDelayedInstantiation: boolean
   ): T {
-    // TODO: impl
+    const node = instantiationNode ?? this;
+
+    if (!supportsDelayedInstantiation) {
+      // eager instantiation
+      return this._createInstance(ctor, args, node);
+    } else {
+      const idle = new GlobalIdleValue<T & object>(() => {
+        return this._createInstance<T>(ctor, args, node) as T & object;
+      });
+
+      return <T>new Proxy(Object.create(null), {
+        get(
+          target: Record<PropertyKey, unknown>,
+          key: PropertyKey,
+          receiver: unknown
+        ): unknown {
+          // value already exists
+          if (Reflect.has(target, key)) {
+            return Reflect.get(target, key, receiver);
+          }
+
+          // create value
+          const obj = idle.value;
+          const property = Reflect.get(obj, key);
+
+          if (typeof property === 'function') {
+            const boundFn = property.bind(obj);
+
+            Reflect.set(target, key, boundFn, receiver);
+            return boundFn;
+          }
+
+          return property;
+        },
+
+        set(
+          _target: Record<PropertyKey, unknown>,
+          key: PropertyKey,
+          value: unknown
+        ): boolean {
+          return Reflect.set(idle.value, key, value);
+        },
+
+        getPrototypeOf(_target: T) {
+          return ctor.prototype;
+        }
+      });
+    }
+  }
+}
+
+// TODO improve this class
+class CyclicDependencyError extends Error {
+  //
+
+  private cyclicDetected = false;
+
+  private constructor(
+    private readonly root: IServiceIdentifier<unknown>,
+    private readonly servicesIds: Set<IServiceIdentifier<unknown>>,
+    buildMessage: boolean
+  ) {
+    super(
+      buildMessage
+        ? CyclicDependencyError.formatCycle(Array.from(servicesIds).reverse())
+        : 'cyclic dependency between services'
+    );
+    this.name = 'DI Error';
+    this.servicesIds = servicesIds;
+  }
+
+  private static formatCycle(
+    servicesIds: IServiceIdentifier<unknown>[]
+  ): string {
+    const names = servicesIds.map((id) => id.toString()); // TODO: it should be constructors name
+
+    if (names.length <= 1) return 'Unknown cyclic dependency error.';
+
+    const header = `\x1b[31mCircular dependency detected between services!\x1b[0m`;
+    const subheader = `The container failed to resolve the graph due to the following cycle:`;
+    const footer = `\x1b[90mHint: Remove the direct dependency.\x1b[0m`;
+
+    const flowLines: string[] = Array.from({ length: names.length * 2 - 1 });
+
+    names.forEach((name, index) => {
+      if (index === 0) {
+        flowLines[index] = `┌→ \x1b[33m${name}\x1b[0m (Cycle origin)`;
+      } else {
+        flowLines[index * 2 - 1] = `│  ↓`;
+        flowLines[index * 2] = `│  \x1b[36m${name}\x1b[0m`;
+      }
+    });
+
+    flowLines.push(`│  ↓`);
+    flowLines.push(
+      `└─ \x1b[31m${names[0]}\x1b[0m \x1b[90m(Circular reference back to here ✖)\x1b[0m`
+    );
+
+    const flow = flowLines.join(EOL);
+
+    const dedent = (strings: TemplateStringsArray, ...values: string[]) => {
+      return strings.reduce(
+        (acc, _str, i) => acc + ((values[i] ?? '') + EOL),
+        ''
+      );
+    };
+
+    return dedent`
+      ${header}
+      ${subheader}
+
+      ${flow}
+
+      ${footer}
+    `;
+  }
+
+  add(
+    id: IServiceIdentifier<unknown>,
+    _descriptor: SyncDescriptor<unknown>
+  ): void {
+    if (this.cyclicDetected) {
+      return;
+    }
+
+    this.servicesIds.add(id);
+
+    if (this.root == id && this.servicesIds.size > 1) {
+      this.cyclicDetected = true;
+    }
+  }
+
+  static from(cyclicError: CyclicDependencyError): CyclicDependencyError;
+  static from(
+    _id: IServiceIdentifier<unknown>,
+    _descriptor: SyncDescriptor<unknown>
+  ): CyclicDependencyError;
+  static from(idOrError: IServiceIdentifier<unknown> | CyclicDependencyError) {
+    if (idOrError instanceof CyclicDependencyError) {
+      return new CyclicDependencyError(
+        idOrError.root,
+        idOrError.servicesIds,
+        true
+      );
+    }
+    return new CyclicDependencyError(idOrError, new Set([idOrError]), false);
   }
 }
