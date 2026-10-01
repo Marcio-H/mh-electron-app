@@ -31,7 +31,16 @@ export interface IInstantiationService extends BrandedService {
 }
 
 export interface IInstantiationNode {
-  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> | undefined;
+  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T>;
+  createAndCacheServiceInstance<T>(
+    id: IServiceIdentifier<T>,
+    ctor: Constructor<T, never[]>,
+    args: unknown[],
+    instantiationNode: IInstantiationNode | undefined,
+    lifecycle: InstantiationLifecycle,
+    supportsDelayedInstantiation: boolean
+  ): T;
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
 }
 
 export interface IServicesAccessor {
