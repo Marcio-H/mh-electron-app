@@ -16,6 +16,8 @@ import {
 import { getServiceDependencies } from './instantiation.util';
 import { ServiceCollection } from './service-collection';
 
+const NO_TRANSIENT_INSTANCES: TransientInstances = new Map();
+
 export class InstantiationService
   implements IInstantiationService, IInstantiationNode
 {
@@ -146,7 +148,7 @@ export class InstantiationService
   private _createInstance<T>(
     ctor: Constructor<T, never[]>,
     args: unknown[],
-    transientInstances: TransientInstances = new Map()
+    transientInstances: TransientInstances = NO_TRANSIENT_INSTANCES
   ): T {
     const serviceDependencies = getServiceDependencies(ctor).sort(
       (a, b) => a.index - b.index
@@ -363,25 +365,23 @@ class CyclicDependencyError extends Error {
 
     if (names.length <= 1) return 'Unknown cyclic dependency error.';
 
-    const header = `\x1b[31mCircular dependency detected between services!\x1b[0m`;
+    const header = `Circular dependency detected between services!`;
     const subheader = `The container failed to resolve the graph due to the following cycle:`;
-    const footer = `\x1b[90mHint: Remove the direct dependency.\x1b[0m`;
+    const footer = `Hint: Remove the direct dependency.`;
 
     const flowLines: string[] = Array.from({ length: names.length * 2 - 1 });
 
     names.forEach((name, index) => {
       if (index === 0) {
-        flowLines[index] = `┌→ \x1b[33m${name}\x1b[0m (Cycle origin)`;
+        flowLines[index] = `┌→ ${name} (Cycle origin)`;
       } else {
         flowLines[index * 2 - 1] = `│  ↓`;
-        flowLines[index * 2] = `│  \x1b[36m${name}\x1b[0m`;
+        flowLines[index * 2] = `│  ${name}`;
       }
     });
 
     flowLines.push(`│  ↓`);
-    flowLines.push(
-      `└─ \x1b[31m${names[0]}\x1b[0m \x1b[90m(Circular reference back to here ✖)\x1b[0m`
-    );
+    flowLines.push(`└─ ${names[0]} (Circular reference back to here ✖)`);
 
     const flow = flowLines.join(EOL);
 
