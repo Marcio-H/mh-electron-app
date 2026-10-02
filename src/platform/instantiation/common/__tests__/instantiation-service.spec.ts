@@ -1,11 +1,17 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { IInstantiationService } from '../instantiation.api';
 import { InstantiationService } from '../instantiation-service';
 import {
   BasicTest,
   BasicTestConfigurationTestRegistry,
   ChildScopedService,
+  DelayedOwnerService,
+  DelayedTransientRegistry,
+  DelayedTransientService,
+  EagerTransientService,
+  IDelayedOwnerService,
   IScopeOwnerService,
+  ITestService,
   RootScopedService,
   ScopeOwnerService,
   TestService,
@@ -33,13 +39,97 @@ describe('instantiation service', () => {
     test.todo('should throw error on circular dependencies');
   });
 
+  describe('invoke function', () => {
+    test('should create instance registered', () => {
+      const result = instantiationService.invokeFunction((accessor) =>
+        accessor.get(ITestService)
+      );
+
+      expect(result).toBeInstanceOf(TestService);
+    });
+
+    describe('supportsDelayedInstantiation', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+
+        EagerTransientService.created = 0;
+        DelayedTransientService.created = 0;
+        DelayedOwnerService.created = 0;
+
+        instantiationService = new InstantiationService(
+          new DelayedTransientRegistry()
+        );
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      test('should defer owner construction until first property access', () => {
+        const owner = instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDelayedOwnerService)
+        );
+
+        expect(owner).toBeInstanceOf(DelayedOwnerService);
+        expect(DelayedOwnerService.created).toBe(0);
+
+        expect(owner.eagerTransientService).toBeInstanceOf(
+          EagerTransientService
+        );
+        expect(DelayedOwnerService.created).toBe(1);
+      });
+
+      test('should create transient dependency eagerly even when owner is delayed', () => {
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDelayedOwnerService)
+        );
+
+        expect(EagerTransientService.created).toBe(1);
+        expect(DelayedOwnerService.created).toBe(0);
+      });
+
+      test('should delay transient dependency registered with supportsDelayedInstantiation', () => {
+        const owner = instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDelayedOwnerService)
+        );
+
+        expect(DelayedTransientService.created).toBe(0);
+
+        expect(owner.delayedTransientService).toBeInstanceOf(
+          DelayedTransientService
+        );
+
+        expect(DelayedOwnerService.created).toBe(1);
+        expect(DelayedTransientService.created).toBe(0);
+
+        expect(owner.delayedTransientService.ping()).toBe('pong');
+        expect(DelayedOwnerService.created).toBe(1);
+        expect(DelayedTransientService.created).toBe(1);
+      });
+
+      test('should construct delayed services on idle without any access', () => {
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDelayedOwnerService)
+        );
+
+        vi.runAllTimers();
+
+        expect(DelayedOwnerService.created).toBe(1);
+        expect(DelayedTransientService.created).toBe(1);
+      });
+    });
+  });
+
   describe('scoped service', () => {
-    let root: IInstantiationService;
     let child: IInstantiationService;
 
     beforeEach(() => {
-      root = new InstantiationService(new TransientScopeRootRegistry());
-      child = root.createChild(new TransientScopeChildRegistry());
+      instantiationService = new InstantiationService(
+        new TransientScopeRootRegistry()
+      );
+      child = instantiationService.createChild(
+        new TransientScopeChildRegistry()
+      );
     });
 
     test('should resolve parent-owned singleton with transient dependency from parent scope', () => {
@@ -48,7 +138,7 @@ describe('instantiation service', () => {
       );
 
       expect(owner.scopedService).toBeInstanceOf(RootScopedService);
-      expect(owner.instantiationService).toBe(root);
+      expect(owner.instantiationService).toBe(instantiationService);
     });
 
     test('should create paren-owned with transient dependency using child overrides', () => {

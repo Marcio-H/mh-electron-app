@@ -216,3 +216,109 @@ export const TransientScopeChildRegistry = registry([
 ]);
 
 // #endregion TRANSIENT SCOPE TEST
+
+// #region DELAYED TRANSIENT TEST
+
+export const IEagerTransientService =
+  createServiceIdentifierDecorator<IEagerTransientService>(
+    'eagerTransientService'
+  );
+
+export const IDelayedTransientService =
+  createServiceIdentifierDecorator<IDelayedTransientService>(
+    'delayedTransientService'
+  );
+
+export const IDelayedOwnerService =
+  createServiceIdentifierDecorator<IDelayedOwnerService>('delayedOwnerService');
+
+export interface IEagerTransientService extends BrandedService {
+  ping(): string;
+}
+
+export interface IDelayedTransientService extends BrandedService {
+  ping(): string;
+}
+
+export interface IDelayedOwnerService extends BrandedService {
+  readonly eagerTransientService: IEagerTransientService;
+  readonly delayedTransientService: IDelayedTransientService;
+}
+
+export class EagerTransientService implements IEagerTransientService {
+  //
+
+  // brand
+  declare readonly _serviceBrand: undefined;
+
+  static created = 0;
+
+  constructor() {
+    EagerTransientService.created++;
+  }
+
+  ping(): string {
+    return 'pong';
+  }
+}
+
+export class DelayedTransientService implements IDelayedTransientService {
+  //
+
+  // brand
+  declare readonly _serviceBrand: undefined;
+
+  static created = 0;
+
+  constructor() {
+    DelayedTransientService.created++;
+  }
+
+  ping(): string {
+    return 'pong';
+  }
+}
+
+export class DelayedOwnerService implements IDelayedOwnerService {
+  //
+
+  // brand
+  declare readonly _serviceBrand: undefined;
+
+  static created = 0;
+
+  constructor(
+    @IEagerTransientService
+    public readonly eagerTransientService: IEagerTransientService,
+    @IDelayedTransientService
+    public readonly delayedTransientService: IDelayedTransientService
+  ) {
+    DelayedOwnerService.created++;
+  }
+}
+
+export const DelayedTransientRegistry = registry([
+  createRegistration({
+    serviceIdentifier: IEagerTransientService,
+    useClass: EagerTransientService,
+    options: { lifecycle: InstantiationLifecycle.Transient }
+  }),
+  createRegistration({
+    serviceIdentifier: IDelayedTransientService,
+    useClass: DelayedTransientService,
+    options: {
+      lifecycle: InstantiationLifecycle.Transient,
+      supportsDelayedInstantiation: true
+    }
+  }),
+  createRegistration({
+    serviceIdentifier: IDelayedOwnerService,
+    useClass: DelayedOwnerService,
+    options: {
+      lifecycle: InstantiationLifecycle.Singleton,
+      supportsDelayedInstantiation: true
+    }
+  })
+]);
+
+// #endregion DELAYED TRANSIENT TEST
