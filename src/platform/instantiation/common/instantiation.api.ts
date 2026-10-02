@@ -36,11 +36,10 @@ export interface IInstantiationNode {
     id: IServiceIdentifier<T>,
     ctor: Constructor<T, never[]>,
     args: unknown[],
-    instantiationNode: IInstantiationNode | undefined,
+    transientInstances: TransientInstances,
     lifecycle: InstantiationLifecycle,
     supportsDelayedInstantiation: boolean
   ): T;
-  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
 }
 
 export interface IServicesAccessor {
@@ -83,6 +82,11 @@ export enum InstantiationLifecycle {
 // #endregion
 
 // #region type
+
+export type TransientInstances = ReadonlyMap<
+  IServiceIdentifier<unknown>,
+  unknown
+>;
 
 export type ServiceEntry<T> = T | SyncDescriptor<T>;
 

@@ -10,7 +10,8 @@ import {
   IServiceCollection,
   IServiceIdentifier,
   IServicesAccessor,
-  ServiceEntry
+  ServiceEntry,
+  TransientInstances
 } from './instantiation.api';
 import { getServiceDependencies } from './instantiation.util';
 import { ServiceCollection } from './service-collection';
@@ -29,12 +30,9 @@ export class InstantiationService
 
   constructor(
     private readonly services: IServiceCollection = new ServiceCollection(),
-    private readonly parent?: IInstantiationNode,
-    registerItself = true
+    private readonly parent?: IInstantiationNode
   ) {
-    if (registerItself) {
-      this.services.set(IInstantiationService, this);
-    }
+    this.services.set(IInstantiationService, this);
   }
 
   createInstance<T>(descriptor: SyncDescriptor<T>): T;
@@ -49,12 +47,11 @@ export class InstantiationService
     if (ctorOrDescriptor instanceof SyncDescriptor) {
       return this._createInstance(
         ctorOrDescriptor.ctor,
-        ctorOrDescriptor.staticArguments.concat(args),
-        this
+        ctorOrDescriptor.staticArguments.concat(args)
       );
     }
 
-    return this._createInstance(ctorOrDescriptor, args, this);
+    return this._createInstance(ctorOrDescriptor, args);
   }
 
   invokeFunction<R, TS extends unknown[] = []>(
@@ -72,7 +69,7 @@ export class InstantiationService
             );
           }
 
-          const service = this._getOrCreateServiceInstance(id, this);
+          const service = this._getOrCreateServiceInstance(id);
 
           return service;
         }
@@ -85,10 +82,9 @@ export class InstantiationService
   }
 
   createChild(
-    services: IServiceCollection,
-    registerChild = true
+    services: IServiceCollection
   ): IInstantiationService & IInstantiationNode {
-    return new InstantiationService(services, this, registerChild);
+    return new InstantiationService(services, this);
   }
 
   getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> {
@@ -105,7 +101,7 @@ export class InstantiationService
     id: IServiceIdentifier<T>,
     ctor: Constructor<T, never[]>,
     args: unknown[] = [],
-    instantiationNode: IInstantiationNode | undefined,
+    transientInstances: TransientInstances,
     lifecycle: InstantiationLifecycle,
     supportsDelayedInstantiation: boolean
   ): T {
@@ -116,7 +112,7 @@ export class InstantiationService
         id,
         ctor,
         args,
-        instantiationNode,
+        transientInstances,
         supportsDelayedInstantiation
       );
 
@@ -132,7 +128,7 @@ export class InstantiationService
         id,
         ctor,
         args,
-        instantiationNode,
+        transientInstances,
         lifecycle,
         supportsDelayedInstantiation
       );
@@ -150,13 +146,16 @@ export class InstantiationService
   private _createInstance<T>(
     ctor: Constructor<T, never[]>,
     args: unknown[],
-    node: IInstantiationNode
+    transientInstances: TransientInstances = new Map()
   ): T {
     const serviceDependencies = getServiceDependencies(ctor).sort(
       (a, b) => a.index - b.index
     );
     const serviceArgs = serviceDependencies.map((dependency) => {
-      return this._getOrCreateServiceInstance(dependency.id, node);
+      return (
+        transientInstances.get(dependency.id) ||
+        this._getOrCreateServiceInstance(dependency.id)
+      );
     });
 
     const firstServiceArgPos = serviceDependencies.length
@@ -181,11 +180,8 @@ export class InstantiationService
     return Reflect.construct(ctor, args.concat(serviceArgs));
   }
 
-  private _getOrCreateServiceInstance<T>(
-    id: IServiceIdentifier<T>,
-    node: IInstantiationNode
-  ): T {
-    const entry = node.getServiceEntry(id);
+  private _getOrCreateServiceInstance<T>(id: IServiceIdentifier<T>): T {
+    const entry = this.getServiceEntry(id);
 
     if (entry instanceof SyncDescriptor) {
       return this._safeCreateAndCacheServiceInstance(id);
@@ -223,7 +219,7 @@ export class InstantiationService
 
       visiting.add(currId);
 
-      let child: (IInstantiationService & IInstantiationNode) | undefined;
+      const child: Map<IServiceIdentifier<unknown>, unknown> = new Map();
 
       for (const dependency of getServiceDependencies(entry.ctor)) {
         const dependencyEntry = this.getServiceEntry(dependency.id);
@@ -234,10 +230,6 @@ export class InstantiationService
               resolveWithCycleTracking(dependency.id, dependencyEntry);
               break;
             case InstantiationLifecycle.Transient:
-              if (!child) {
-                child = this.createChild(new ServiceCollection(), false);
-              }
-
               child.set(
                 dependency.id,
                 resolveWithCycleTracking(dependency.id, dependencyEntry)
@@ -291,17 +283,16 @@ export class InstantiationService
     _id: IServiceIdentifier<T>,
     ctor: Constructor<T, never[]>,
     args: unknown[] = [],
-    instantiationNode: IInstantiationNode | undefined,
+    transientInstances: TransientInstances,
     supportsDelayedInstantiation: boolean
   ): T {
-    const node = instantiationNode ?? this;
-
     if (!supportsDelayedInstantiation) {
       // eager instantiation
-      return this._createInstance(ctor, args, node);
+      return this._createInstance(ctor, args, transientInstances);
     } else {
       const idle = new GlobalIdleValue<T & object>(() => {
-        return this._createInstance<T>(ctor, args, node) as T & object;
+        return this._createInstance<T>(ctor, args, transientInstances) as T &
+          object;
       });
 
       return <T>new Proxy(Object.create(null), {
