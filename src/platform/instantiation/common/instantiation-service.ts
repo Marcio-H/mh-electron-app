@@ -219,7 +219,7 @@ export class InstantiationService
 
       visiting.add(currId);
 
-      const child: Map<IServiceIdentifier<unknown>, unknown> = new Map();
+      const holder = new Map<IServiceIdentifier<unknown>, unknown>();
 
       for (const dependency of getServiceDependencies(entry.ctor)) {
         const dependencyEntry = this.getServiceEntry(dependency.id);
@@ -230,7 +230,7 @@ export class InstantiationService
               resolveWithCycleTracking(dependency.id, dependencyEntry);
               break;
             case InstantiationLifecycle.Transient:
-              child.set(
+              holder.set(
                 dependency.id,
                 resolveWithCycleTracking(dependency.id, dependencyEntry)
               );
@@ -245,7 +245,7 @@ export class InstantiationService
         currId,
         entry.ctor,
         entry.staticArguments,
-        child,
+        holder,
         entry.lifecycle,
         entry.supportsDelayedInstantiation
       );

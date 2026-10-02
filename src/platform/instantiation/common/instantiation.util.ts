@@ -21,8 +21,8 @@ const DI_TARGET = Symbol('di.target');
 const DI_DEPENDENCIES = Symbol('di.dependencies');
 
 // TODO: change Function
-interface DI_TARGET_OBJ extends Function {
-  [DI_TARGET]?: Function;
+interface DI_TARGET_OBJ extends Constructor<unknown, never[]> {
+  [DI_TARGET]?: Constructor<unknown, never[]>;
   [DI_DEPENDENCIES]?: ServiceDependency[];
 }
 
