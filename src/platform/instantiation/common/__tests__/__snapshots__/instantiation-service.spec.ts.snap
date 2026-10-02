@@ -1,0 +1,14 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`instantiation service > createInstance > circular dependencies > should throw error on circular dependencies 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ CircularDependencyA (Cycle origin)
+│  ↓
+│  CircularDependencyA
+│  ↓
+└─ CircularDependencyA (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;

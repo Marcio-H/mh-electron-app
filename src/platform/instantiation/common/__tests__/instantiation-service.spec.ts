@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { IInstantiationService } from '../instantiation.api';
 import { InstantiationService } from '../instantiation-service';
 import {
+  BasicCircularConfigurationTestRegistry,
   BasicTest,
   BasicTestConfigurationTestRegistry,
   ChildScopedService,
+  CircularTest,
   DelayedOwnerService,
   DelayedTransientRegistry,
   DelayedTransientService,
@@ -36,7 +38,19 @@ describe('instantiation service', () => {
       expect(result.testService).toBeInstanceOf(TestService);
     });
 
-    test.todo('should throw error on circular dependencies');
+    describe('circular dependencies', () => {
+      beforeEach(() => {
+        instantiationService = new InstantiationService(
+          new BasicCircularConfigurationTestRegistry()
+        );
+      });
+
+      test('should throw error on circular dependencies', () => {
+        expect(() =>
+          instantiationService.createInstance(CircularTest)
+        ).toThrowErrorMatchingSnapshot();
+      });
+    });
   });
 
   describe('invoke function', () => {
