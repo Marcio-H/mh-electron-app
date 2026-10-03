@@ -1,11 +1,89 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`instantiation service > createInstance > circular dependencies > should throw error on circular dependencies 1`] = `
+exports[`instantiation service > circular dependencies > should detect cycle between singleton and transient services 1`] = `
 [DI Error: Circular dependency detected between services!
 The container failed to resolve the graph due to the following cycle:
 ┌→ CircularDependencyA (Cycle origin)
 │  ↓
-│  CircularDependencyA
+│  CircularDependencyB
+│  ↓
+└─ CircularDependencyA (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
+exports[`instantiation service > circular dependencies > should detect cycle between transient services 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ CircularDependencyA (Cycle origin)
+│  ↓
+│  CircularDependencyB
+│  ↓
+└─ CircularDependencyA (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
+exports[`instantiation service > circular dependencies > should detect service depending on itself 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ SelfCircularService (Cycle origin)
+│  ↓
+└─ SelfCircularService (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
+exports[`instantiation service > circular dependencies > should leave services that only lead to the cycle out of the error 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ CircularDependencyA (Cycle origin)
+│  ↓
+│  CircularDependencyB
+│  ↓
+└─ CircularDependencyA (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
+exports[`instantiation service > circular dependencies > should list every service of a long cycle in dependency order 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ LongCircularA (Cycle origin)
+│  ↓
+│  LongCircularB
+│  ↓
+│  LongCircularC
+│  ↓
+└─ LongCircularA (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
+exports[`instantiation service > circular dependencies > should throw error on circular dependencies 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ CircularDependencyA (Cycle origin)
+│  ↓
+│  CircularDependencyB
+│  ↓
+└─ CircularDependencyA (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
+exports[`instantiation service > circular dependencies > should throw on resolution when cyclic service supports delayed instantiation 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ CircularDependencyA (Cycle origin)
+│  ↓
+│  CircularDependencyB
 │  ↓
 └─ CircularDependencyA (Circular reference back to here ✖)
 Hint: Remove the direct dependency.

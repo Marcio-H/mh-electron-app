@@ -216,7 +216,7 @@ export class InstantiationService
       if (!(entry instanceof SyncDescriptor)) return entry;
 
       if (visiting.has(currId)) {
-        throw CyclicDependencyError.start(currId, entry);
+        throw CyclicDependencyError.start(currId);
       }
 
       visiting.add(currId);
@@ -342,6 +342,7 @@ class CyclicDependencyError extends Error {
   //
 
   private constructor(
+    private readonly originId: IServiceIdentifier<unknown>,
     private readonly servicesStack: {
       id: IServiceIdentifier<unknown>;
       descriptor: SyncDescriptor<unknown>;
@@ -350,7 +351,7 @@ class CyclicDependencyError extends Error {
   ) {
     super(
       cyclicDetected
-        ? CyclicDependencyError.formatCycle(servicesStack.reverse())
+        ? CyclicDependencyError.formatCycle(servicesStack)
         : 'cyclic dependency between services'
     );
     this.name = 'DI Error';
@@ -362,9 +363,12 @@ class CyclicDependencyError extends Error {
       descriptor: SyncDescriptor<unknown>;
     }[]
   ): string {
-    const names = services.map((service) => service.descriptor.ctor.name);
+    if (!services.length) return 'Unknown cyclic dependency error.';
 
-    if (names.length <= 1) return 'Unknown cyclic dependency error.';
+    const [origin, ...dependents] = services;
+    const names = [origin, ...dependents.reverse()].map(
+      (service) => service.descriptor.ctor.name
+    );
 
     const header = `Circular dependency detected between services!`;
     const subheader = `The container failed to resolve the graph due to the following cycle:`;
@@ -411,21 +415,19 @@ class CyclicDependencyError extends Error {
       return;
     }
 
-    if (this.servicesStack[0].id == id) {
+    if (this.originId == id && this.servicesStack.length) {
       this.cyclicDetected = true;
+      return;
     }
 
     this.servicesStack.push({ id, descriptor });
   }
 
-  static start(
-    id: IServiceIdentifier<unknown>,
-    descriptor: SyncDescriptor<unknown>
-  ): CyclicDependencyError {
-    return new CyclicDependencyError([{ id, descriptor }], false);
+  static start(id: IServiceIdentifier<unknown>): CyclicDependencyError {
+    return new CyclicDependencyError(id, [], false);
   }
 
   static resolve(err: CyclicDependencyError) {
-    return new CyclicDependencyError(err.servicesStack, err.cyclicDetected);
+    return new CyclicDependencyError(err.originId, err.servicesStack, true);
   }
 }

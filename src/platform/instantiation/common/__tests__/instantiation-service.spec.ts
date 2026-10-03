@@ -7,16 +7,39 @@ import {
   BasicTestConfigurationTestRegistry,
   ChildScopedService,
   CircularTest,
+  DelayedCircularRegistry,
   DelayedOwnerService,
   DelayedTransientRegistry,
   DelayedTransientService,
+  DiamondRegistry,
+  DiamondSharedService,
+  DynamicCircularA,
+  DynamicCircularB,
+  DynamicCircularRegistry,
   EagerTransientService,
+  ICircularDependencyA,
+  ICircularPrefixService,
   IDelayedOwnerService,
+  IDiamondTopService,
+  IDynamicCircularA,
+  ILongCircularA,
   IScopeOwnerService,
+  IScopedCircularOwner,
+  ISelfCircularService,
   ITestService,
+  LazyCircularRegistry,
+  LongCircularRegistry,
+  MixedLifecycleCircularRegistry,
+  PrefixedCircularRegistry,
+  ReentrantLazyCircularRegistry,
+  RootScopedCircularDependency,
   RootScopedService,
+  ScopedCircularChildRegistry,
+  ScopedCircularRootRegistry,
   ScopeOwnerService,
+  SelfCircularRegistry,
   TestService,
+  TransientCircularRegistry,
   TransientScopeChildRegistry,
   TransientScopeRootRegistry
 } from './configuration-test-registry';
@@ -37,20 +60,6 @@ describe('instantiation service', () => {
       expect(result).not.toBeNull();
       expect(result.testService).toBeInstanceOf(TestService);
     });
-
-    describe('circular dependencies', () => {
-      beforeEach(() => {
-        instantiationService = new InstantiationService(
-          new BasicCircularConfigurationTestRegistry()
-        );
-      });
-
-      test('should throw error on circular dependencies', () => {
-        expect(() =>
-          instantiationService.createInstance(CircularTest)
-        ).toThrowErrorMatchingSnapshot();
-      });
-    });
   });
 
   describe('invoke function', () => {
@@ -60,6 +69,24 @@ describe('instantiation service', () => {
       );
 
       expect(result).toBeInstanceOf(TestService);
+    });
+
+    test('should create diamond graph with transient dependency shared by two services as a cycle', () => {
+      instantiationService = new InstantiationService(new DiamondRegistry());
+
+      const top = instantiationService.invokeFunction((accessor) =>
+        accessor.get(IDiamondTopService)
+      );
+
+      expect(top.leftService.sharedService).toBeInstanceOf(
+        DiamondSharedService
+      );
+      expect(top.rightService.sharedService).toBeInstanceOf(
+        DiamondSharedService
+      );
+      expect(top.leftService.sharedService).not.toBe(
+        top.rightService.sharedService
+      );
     });
 
     describe('supportsDelayedInstantiation', () => {
@@ -160,6 +187,178 @@ describe('instantiation service', () => {
 
       expect(owner.scopedService).toBeInstanceOf(ChildScopedService);
       expect(owner.instantiationService).toBe(child);
+    });
+  });
+
+  describe('circular dependencies', () => {
+    test('should throw error on circular dependencies', () => {
+      instantiationService = new InstantiationService(
+        new BasicCircularConfigurationTestRegistry()
+      );
+
+      expect(() =>
+        instantiationService.createInstance(CircularTest)
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    test('should detect service depending on itself', () => {
+      instantiationService = new InstantiationService(
+        new SelfCircularRegistry()
+      );
+
+      expect(() =>
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(ISelfCircularService)
+        )
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    test('should list every service of a long cycle in dependency order', () => {
+      instantiationService = new InstantiationService(
+        new LongCircularRegistry()
+      );
+
+      expect(() =>
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(ILongCircularA)
+        )
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    test('should leave services that only lead to the cycle out of the error', () => {
+      instantiationService = new InstantiationService(
+        new PrefixedCircularRegistry()
+      );
+
+      expect(() =>
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(ICircularPrefixService)
+        )
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    test('should detect cycle between transient services', () => {
+      instantiationService = new InstantiationService(
+        new TransientCircularRegistry()
+      );
+
+      expect(() =>
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(ICircularDependencyA)
+        )
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    test('should detect cycle between singleton and transient services', () => {
+      instantiationService = new InstantiationService(
+        new MixedLifecycleCircularRegistry()
+      );
+
+      expect(() =>
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(ICircularDependencyA)
+        )
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    test('should throw on resolution when cyclic service supports delayed instantiation', () => {
+      instantiationService = new InstantiationService(
+        new DelayedCircularRegistry()
+      );
+
+      expect(() =>
+        instantiationService.invokeFunction((accessor) =>
+          accessor.get(ICircularDependencyA)
+        )
+      ).toThrowErrorMatchingSnapshot();
+    });
+
+    describe('resolved inside constructor', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+
+        DynamicCircularA.created = 0;
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      test('should throw when constructor resolves a service that depends back on it', () => {
+        instantiationService = new InstantiationService(
+          new DynamicCircularRegistry()
+        );
+
+        expect(() =>
+          instantiationService.invokeFunction((accessor) =>
+            accessor.get(IDynamicCircularA)
+          )
+        ).toThrow('recursively instantiating service'); // TODO: improve this
+
+        expect(DynamicCircularA.created).toBe(1);
+      });
+
+      test('should allow cycle when delayed service resolves its dependent inside constructor', () => {
+        instantiationService = new InstantiationService(
+          new LazyCircularRegistry()
+        );
+
+        const circularA = instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDynamicCircularA)
+        );
+
+        expect(DynamicCircularA.created).toBe(0);
+        expect(circularA.circularB).toBeInstanceOf(DynamicCircularB);
+        expect(circularA.circularB.circularA).toBe(circularA);
+        expect(DynamicCircularA.created).toBe(1);
+      });
+
+      test('should throw on every access when dependent uses delayed service inside constructor', () => {
+        instantiationService = new InstantiationService(
+          new ReentrantLazyCircularRegistry()
+        );
+
+        const circularA = instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDynamicCircularA)
+        );
+
+        expect(DynamicCircularA.created).toBe(0);
+        expect(() => circularA.circularB).toThrow(
+          'recursively instantiating service'
+        );
+      });
+
+      test('should hold error of idle construction until first access', () => {
+        instantiationService = new InstantiationService(
+          new ReentrantLazyCircularRegistry()
+        );
+
+        const circularA = instantiationService.invokeFunction((accessor) =>
+          accessor.get(IDynamicCircularA)
+        );
+
+        expect(DynamicCircularA.created).toBe(0);
+        expect(() => vi.runAllTimers()).not.toThrow();
+        expect(() => circularA.circularB).toThrow(
+          'recursively instantiating service'
+        );
+      });
+
+      test('should resolve parent-owned singleton when child override depends back on it', () => {
+        instantiationService = new InstantiationService(
+          new ScopedCircularRootRegistry()
+        );
+
+        const child = instantiationService.createChild(
+          new ScopedCircularChildRegistry()
+        );
+
+        const owner = child.invokeFunction((accessor) =>
+          accessor.get(IScopedCircularOwner)
+        );
+
+        expect(owner.dependency).toBeInstanceOf(RootScopedCircularDependency);
+      });
     });
   });
 });
