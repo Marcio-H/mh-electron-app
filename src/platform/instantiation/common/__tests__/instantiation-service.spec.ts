@@ -273,6 +273,22 @@ describe('instantiation service', () => {
       ).toThrowErrorMatchingSnapshot();
     });
 
+    test('should resolve parent-owned singleton when child override depends back on it', () => {
+      instantiationService = new InstantiationService(
+        new ScopedCircularRootRegistry()
+      );
+
+      const child = instantiationService.createChild(
+        new ScopedCircularChildRegistry()
+      );
+
+      const owner = child.invokeFunction((accessor) =>
+        accessor.get(IScopedCircularOwner)
+      );
+
+      expect(owner.dependency).toBeInstanceOf(RootScopedCircularDependency);
+    });
+
     describe('resolved inside constructor', () => {
       beforeEach(() => {
         vi.useFakeTimers();
@@ -342,22 +358,6 @@ describe('instantiation service', () => {
         expect(() => circularA.circularB).toThrow(
           'recursively instantiating service'
         );
-      });
-
-      test('should resolve parent-owned singleton when child override depends back on it', () => {
-        instantiationService = new InstantiationService(
-          new ScopedCircularRootRegistry()
-        );
-
-        const child = instantiationService.createChild(
-          new ScopedCircularChildRegistry()
-        );
-
-        const owner = child.invokeFunction((accessor) =>
-          accessor.get(IScopedCircularOwner)
-        );
-
-        expect(owner.dependency).toBeInstanceOf(RootScopedCircularDependency);
       });
     });
   });
