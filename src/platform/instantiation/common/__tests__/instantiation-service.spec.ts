@@ -1,5 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { IInstantiationService } from '../instantiation.api';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test as baseTest,
+  vi
+} from 'vitest';
+import {
+  IInstantiationService,
+  IServiceCollection
+} from '../instantiation.api';
 import { InstantiationService } from '../instantiation-service';
 import {
   BasicCircularConfigurationTestRegistry,
@@ -41,136 +51,155 @@ import {
   TestService,
   TransientCircularRegistry,
   TransientScopeChildRegistry,
-  TransientScopeRootRegistry
+  TransientScopeRootRegistry,
+  DeepScopedChildRegistry,
+  DiamondTopService,
+  ScopedDiamondSharedService,
+  IDiamondSharedService,
+  IDiamondLeftService,
+  IDiamondRightService
 } from './configuration-test-registry';
+
+declare module 'vitest' {
+  interface TaskMeta {
+    rootInstantiationRegistry?: IServiceCollection;
+    childInstantiationRegistry?: IServiceCollection | null;
+  }
+}
+
+const test = baseTest.extend<{
+  rootInstantiationRegistry: IServiceCollection;
+  childInstantiationRegistry?: IServiceCollection;
+}>({
+  rootInstantiationRegistry: async ({ task }, use) => {
+    await use(
+      task.meta.rootInstantiationRegistry ??
+        new BasicTestConfigurationTestRegistry()
+    );
+  }
+});
 
 describe('instantiation service', () => {
   let instantiationService: IInstantiationService;
 
-  beforeEach(() => {
+  test.beforeEach(({ rootInstantiationRegistry, task }) => {
     instantiationService = new InstantiationService(
-      new BasicTestConfigurationTestRegistry()
+      task.meta.rootInstantiationRegistry ?? rootInstantiationRegistry
     );
   });
 
-  describe('createInstance', () => {
-    test('should create instance with injected services', () => {
-      const result = instantiationService.createInstance(BasicTest);
+  test('should create instance with injected services', () => {
+    const result = instantiationService.createInstance(BasicTest);
 
-      expect(result).not.toBeNull();
-      expect(result.testService).toBeInstanceOf(TestService);
-    });
+    expect(result).not.toBeNull();
+    expect(result.testService).toBeInstanceOf(TestService);
   });
 
-  describe('invoke function', () => {
-    test('should create instance registered', () => {
-      const result = instantiationService.invokeFunction((accessor) =>
-        accessor.get(ITestService)
-      );
+  test('should create instance registered', () => {
+    const result = instantiationService.invokeFunction((accessor) =>
+      accessor.get(ITestService)
+    );
 
-      expect(result).toBeInstanceOf(TestService);
+    expect(result).toBeInstanceOf(TestService);
+  });
+
+  describe('supportsDelayedInstantiation', () => {
+    test.override(
+      'rootInstantiationRegistry',
+      () => new DelayedTransientRegistry()
+    );
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+
+      EagerTransientService.created = 0;
+      DelayedTransientService.created = 0;
+      DelayedOwnerService.created = 0;
     });
 
-    test('should create diamond graph with transient dependency shared by two services as a cycle', () => {
-      instantiationService = new InstantiationService(new DiamondRegistry());
-
-      const top = instantiationService.invokeFunction((accessor) =>
-        accessor.get(IDiamondTopService)
-      );
-
-      expect(top.leftService.sharedService).toBeInstanceOf(
-        DiamondSharedService
-      );
-      expect(top.rightService.sharedService).toBeInstanceOf(
-        DiamondSharedService
-      );
-      expect(top.leftService.sharedService).not.toBe(
-        top.rightService.sharedService
-      );
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
-    describe('supportsDelayedInstantiation', () => {
-      beforeEach(() => {
-        vi.useFakeTimers();
+    test('should defer owner construction until first property access', () => {
+      const owner = instantiationService.invokeFunction((accessor) =>
+        accessor.get(IDelayedOwnerService)
+      );
 
-        EagerTransientService.created = 0;
-        DelayedTransientService.created = 0;
-        DelayedOwnerService.created = 0;
+      expect(owner).toBeInstanceOf(DelayedOwnerService);
+      expect(DelayedOwnerService.created).toBe(0);
 
-        instantiationService = new InstantiationService(
-          new DelayedTransientRegistry()
-        );
-      });
+      expect(owner.eagerTransientService).toBeInstanceOf(EagerTransientService);
+      expect(DelayedOwnerService.created).toBe(1);
+    });
 
-      afterEach(() => {
-        vi.useRealTimers();
-      });
+    test('should create transient dependency eagerly even when owner is delayed', () => {
+      instantiationService.invokeFunction((accessor) =>
+        accessor.get(IDelayedOwnerService)
+      );
 
-      test('should defer owner construction until first property access', () => {
-        const owner = instantiationService.invokeFunction((accessor) =>
-          accessor.get(IDelayedOwnerService)
-        );
+      expect(EagerTransientService.created).toBe(1);
+      expect(DelayedOwnerService.created).toBe(0);
+    });
 
-        expect(owner).toBeInstanceOf(DelayedOwnerService);
-        expect(DelayedOwnerService.created).toBe(0);
+    test('should delay transient dependency registered with supportsDelayedInstantiation', () => {
+      const owner = instantiationService.invokeFunction((accessor) =>
+        accessor.get(IDelayedOwnerService)
+      );
 
-        expect(owner.eagerTransientService).toBeInstanceOf(
-          EagerTransientService
-        );
-        expect(DelayedOwnerService.created).toBe(1);
-      });
+      expect(DelayedTransientService.created).toBe(0);
 
-      test('should create transient dependency eagerly even when owner is delayed', () => {
-        instantiationService.invokeFunction((accessor) =>
-          accessor.get(IDelayedOwnerService)
-        );
+      expect(owner.delayedTransientService).toBeInstanceOf(
+        DelayedTransientService
+      );
 
-        expect(EagerTransientService.created).toBe(1);
-        expect(DelayedOwnerService.created).toBe(0);
-      });
+      expect(DelayedOwnerService.created).toBe(1);
+      expect(DelayedTransientService.created).toBe(0);
 
-      test('should delay transient dependency registered with supportsDelayedInstantiation', () => {
-        const owner = instantiationService.invokeFunction((accessor) =>
-          accessor.get(IDelayedOwnerService)
-        );
+      expect(owner.delayedTransientService.ping()).toBe('pong');
+      expect(DelayedOwnerService.created).toBe(1);
+      expect(DelayedTransientService.created).toBe(1);
+    });
 
-        expect(DelayedTransientService.created).toBe(0);
+    test('should construct delayed services on idle without any access', () => {
+      instantiationService.invokeFunction((accessor) =>
+        accessor.get(IDelayedOwnerService)
+      );
 
-        expect(owner.delayedTransientService).toBeInstanceOf(
-          DelayedTransientService
-        );
+      vi.runAllTimers();
 
-        expect(DelayedOwnerService.created).toBe(1);
-        expect(DelayedTransientService.created).toBe(0);
-
-        expect(owner.delayedTransientService.ping()).toBe('pong');
-        expect(DelayedOwnerService.created).toBe(1);
-        expect(DelayedTransientService.created).toBe(1);
-      });
-
-      test('should construct delayed services on idle without any access', () => {
-        instantiationService.invokeFunction((accessor) =>
-          accessor.get(IDelayedOwnerService)
-        );
-
-        vi.runAllTimers();
-
-        expect(DelayedOwnerService.created).toBe(1);
-        expect(DelayedTransientService.created).toBe(1);
-      });
+      expect(DelayedOwnerService.created).toBe(1);
+      expect(DelayedTransientService.created).toBe(1);
     });
   });
 
   describe('scoped service', () => {
     let child: IInstantiationService;
 
-    beforeEach(() => {
-      instantiationService = new InstantiationService(
-        new TransientScopeRootRegistry()
-      );
-      child = instantiationService.createChild(
-        new TransientScopeChildRegistry()
-      );
+    test
+      .override(
+        'rootInstantiationRegistry',
+        () => new TransientScopeRootRegistry()
+      )
+      .override('childInstantiationRegistry', ({ task }) => {
+        if (task.meta.childInstantiationRegistry === null) {
+          return undefined;
+        }
+
+        return (
+          task.meta.childInstantiationRegistry ||
+          new TransientScopeChildRegistry()
+        );
+      });
+
+    test.beforeEach(({ childInstantiationRegistry }) => {
+      child = undefined as never;
+
+      if (childInstantiationRegistry) {
+        child = instantiationService.createChild(
+          childInstantiationRegistry as IServiceCollection
+        );
+      }
     });
 
     test('should resolve parent-owned singleton with transient dependency from parent scope', () => {
@@ -187,6 +216,71 @@ describe('instantiation service', () => {
 
       expect(owner.scopedService).toBeInstanceOf(ChildScopedService);
       expect(owner.instantiationService).toBe(child);
+    });
+
+    describe('diamond services graph registry', () => {
+      test
+        .override('rootInstantiationRegistry', () => new DiamondRegistry())
+        .override(
+          'childInstantiationRegistry',
+          () => new DeepScopedChildRegistry()
+        );
+
+      test(
+        'should create diamond graph with transient dependency shared by two services as a cycle',
+        { meta: { childInstantiationRegistry: null } },
+        () => {
+          const top = instantiationService.invokeFunction((accessor) =>
+            accessor.get(IDiamondTopService)
+          );
+
+          expect(top.leftService.sharedService).toBeInstanceOf(
+            DiamondSharedService
+          );
+          expect(top.rightService.sharedService).toBeInstanceOf(
+            DiamondSharedService
+          );
+          expect(top.leftService.sharedService).not.toBe(
+            top.rightService.sharedService
+          );
+        }
+      );
+
+      test('should create parent class with deeply nested child override', () => {
+        const top = child.createInstance(DiamondTopService);
+
+        expect(top.leftService.sharedService).toBeInstanceOf(
+          ScopedDiamondSharedService
+        );
+
+        expect(top.leftService.sharedService.ping()).toBe('scoped ping');
+        expect(top.rightService.sharedService.ping()).toBe('scoped ping');
+        expect(top.leftService.sharedService).not.toBe(
+          top.rightService.sharedService
+        );
+
+        const leftService = child.invokeFunction((accessor) =>
+          accessor.get(IDiamondLeftService)
+        );
+        const rightService = child.invokeFunction((accessor) =>
+          accessor.get(IDiamondRightService)
+        );
+
+        const errorMessage =
+          'this singleton instance belongs to parent registry, top was created by child, that singleton instance only is avaible for child registry';
+
+        expect(leftService, errorMessage).not.toBe(top.leftService); // TODO: THIS CACHE WILL ONLY BE AVAIBLE FOR CHILD INSTANCE child.get(IDiamondRightService) should aways return the same instance (parent declared instance)
+        expect(rightService, errorMessage).not.toBe(top.rightService);
+      });
+
+      test('should parent create instance', () => {
+        const rootSharedService = instantiationService.invokeFunction(
+          (accessor) => accessor.get(IDiamondSharedService)
+        );
+
+        expect(rootSharedService).toBeInstanceOf(DiamondSharedService);
+        expect(rootSharedService.ping()).toBe('pong');
+      });
     });
   });
 

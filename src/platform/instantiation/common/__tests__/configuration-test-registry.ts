@@ -145,6 +145,25 @@ export const DiamondRegistry = registry([
   })
 ]);
 
+export class ScopedDiamondSharedService implements IDiamondSharedService {
+  //
+
+  //brand
+  declare _serviceBrand: undefined;
+
+  ping(): string {
+    return 'scoped ping';
+  }
+}
+
+export const DeepScopedChildRegistry = registry([
+  createRegistration({
+    serviceIdentifier: IDiamondSharedService,
+    useClass: ScopedDiamondSharedService,
+    options: { lifecycle: InstantiationLifecycle.Transient }
+  })
+]);
+
 // #endregion DIAMOND TEST
 
 // #region CIRCULAR TEST
