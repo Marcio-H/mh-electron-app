@@ -5,9 +5,9 @@ import {
 } from '../instantiation.api';
 import {
   createRegistration,
-  createServiceIdentifierDecorator,
-  registry
+  createServiceIdentifierDecorator
 } from '../instantiation.util';
+import { registryTest as registry } from './instantiation.test.util';
 
 // #region BASIC TEST
 
