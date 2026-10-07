@@ -32,9 +32,13 @@ export class InstantiationService
 
   constructor(
     private readonly services: IServiceCollection = new ServiceCollection(),
-    private readonly parent?: IInstantiationNode
+    private readonly _parent?: IInstantiationNode
   ) {
     this.services.set(IInstantiationService, this);
+  }
+
+  get parent(): IInstantiationNode | undefined {
+    return this.parent;
   }
 
   createInstance<T>(descriptor: SyncDescriptor<T>): T;
@@ -71,9 +75,16 @@ export class InstantiationService
             );
           }
 
-          const service = this._getOrCreateServiceInstance(id);
+          const [node, descriptor, instance] = this.getInstantiationEntry(
+            id,
+            false
+          );
 
-          return service;
+          if (instance) {
+            return instance;
+          }
+
+          return node.getOrCreateServiceInstance(id, descriptor);
         }
       };
 
@@ -89,14 +100,50 @@ export class InstantiationService
     return new InstantiationService(services, this);
   }
 
-  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T> {
-    const entry = this.services.get(id) || this.parent?.getServiceEntry(id);
+  getInstantiationEntry<T>(
+    id: IServiceIdentifier<T>,
+    includeOverwrittenServices = true
+  ): [IInstantiationNode, ServiceEntry<T>, T | undefined] {
+    const bucket = this.services.get(id, includeOverwrittenServices);
 
-    if (!entry) {
+    if (bucket) {
+      const { descriptor, value } = bucket;
+
+      return [this, descriptor, value];
+    }
+
+    if (!this._parent) {
       throw new Error(`unknown service '${id.toString()}'`);
     }
 
-    return entry;
+    return this._parent.getInstantiationEntry(id);
+  }
+
+  isChildOf(from: IInstantiationNode): boolean {
+    let node = this as IInstantiationNode | undefined;
+
+    while (node) {
+      if (node.parent === from) return true;
+      node = node.parent;
+    }
+
+    return false;
+  }
+
+  getOrCreateServiceInstance<T>(
+    id: IServiceIdentifier<T>,
+    descriptor: ServiceEntry<T>
+  ): T {
+    // useValue descriptor
+    if (!(descriptor instanceof SyncDescriptor)) {
+      return descriptor;
+    }
+
+    return this._safeCreateAndCacheServiceInstance(id);
+  }
+
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
+    this.services.set(id, entry, true);
   }
 
   createAndCacheServiceInstance<T>(
@@ -107,9 +154,30 @@ export class InstantiationService
     lifecycle: InstantiationLifecycle,
     supportsDelayedInstantiation: boolean
   ): T {
-    const entry = this.services.get(id);
+    const bucket = this.services.get(id, true);
 
-    if (entry instanceof SyncDescriptor) {
+    if (!bucket) {
+      if (this._parent) {
+        return this._parent.createAndCacheServiceInstance(
+          id,
+          ctor,
+          args,
+          transientInstances,
+          lifecycle,
+          supportsDelayedInstantiation
+        );
+      } else {
+        throw new Error(
+          `illegalState - creating UNKNOWN service instance ${ctor.name}`
+        );
+      }
+    }
+
+    if (bucket.value) {
+      return bucket.value;
+    }
+
+    if (bucket.descriptor instanceof SyncDescriptor) {
       const instance = this._createServiceInstance(
         id,
         ctor,
@@ -119,30 +187,13 @@ export class InstantiationService
       );
 
       if (lifecycle == InstantiationLifecycle.Singleton) {
-        this.services.set(id, instance);
+        this.services.save(id, instance);
       }
 
       return instance;
-    } else if (entry) {
-      return entry;
-    } else if (this.parent) {
-      return this.parent.createAndCacheServiceInstance(
-        id,
-        ctor,
-        args,
-        transientInstances,
-        lifecycle,
-        supportsDelayedInstantiation
-      );
-    } else {
-      throw new Error(
-        `illegalState - creating UNKNOWN service instance ${ctor.name}`
-      );
     }
-  }
 
-  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
-    this.services.set(id, entry);
+    return bucket.descriptor;
   }
 
   private _createInstance<T>(
@@ -183,13 +234,13 @@ export class InstantiationService
   }
 
   private _getOrCreateServiceInstance<T>(id: IServiceIdentifier<T>): T {
-    const entry = this.getServiceEntry(id);
+    const [node, descriptor, instance] = this.getInstantiationEntry(id);
 
-    if (entry instanceof SyncDescriptor) {
-      return this._safeCreateAndCacheServiceInstance(id);
+    if (instance && node == this) {
+      return instance;
     }
 
-    return entry;
+    return this.getOrCreateServiceInstance(id, descriptor);
   }
 
   private _safeCreateAndCacheServiceInstance<T>(id: IServiceIdentifier<T>): T {
@@ -209,11 +260,19 @@ export class InstantiationService
   }
 
   private _createAndCacheServiceInstance<T>(id: IServiceIdentifier<T>): T {
-    const visiting = new Set<IServiceIdentifier<unknown>>();
-    const resolve = (currId: IServiceIdentifier<unknown>) => {
-      const entry = this.getServiceEntry(currId);
+    type ResolvedInstance<T> = { instance: T; dependencyOverridden: boolean };
 
-      if (!(entry instanceof SyncDescriptor)) return entry;
+    const visiting = new Set<IServiceIdentifier<unknown>>();
+    const resolve = <RT>(
+      currId: IServiceIdentifier<RT>
+    ): ResolvedInstance<RT> => {
+      const [node, descriptor, cachedInstance] =
+        this.getInstantiationEntry(currId);
+
+      // useValue descriptor
+      if (!(descriptor instanceof SyncDescriptor)) {
+        return { instance: descriptor, dependencyOverridden: false };
+      }
 
       if (visiting.has(currId)) {
         throw CyclicDependencyError.start(currId);
@@ -222,38 +281,60 @@ export class InstantiationService
       visiting.add(currId);
 
       const holder = new Map<IServiceIdentifier<unknown>, unknown>();
+      let dependencyOverridden = false;
 
-      for (const dependency of getServiceDependencies(entry.ctor)) {
-        const dependencyEntry = this.getServiceEntry(dependency.id);
+      for (const dependency of getServiceDependencies(descriptor.ctor)) {
+        const [dependencyNode, dependencyEntry] = this.getInstantiationEntry(
+          dependency.id
+        );
+
+        if (node != dependencyNode && !node.isChildOf(dependencyNode)) {
+          dependencyNode.set(currId, descriptor);
+          dependencyOverridden = true;
+        }
 
         if (dependencyEntry instanceof SyncDescriptor) {
           switch (dependencyEntry.lifecycle) {
             case InstantiationLifecycle.Singleton:
-              resolveWithCycleTracking(dependency.id, dependencyEntry);
-              break;
-            case InstantiationLifecycle.Transient:
-              holder.set(
-                dependency.id,
+              dependencyOverridden =
+                dependencyOverridden ||
                 resolveWithCycleTracking(dependency.id, dependencyEntry)
-              );
+                  .dependencyOverridden;
               break;
+            case InstantiationLifecycle.Transient: {
+              const result = resolveWithCycleTracking(
+                dependency.id,
+                dependencyEntry
+              );
+
+              holder.set(dependency.id, result.instance);
+              dependencyOverridden =
+                dependencyOverridden || result.dependencyOverridden;
+              break;
+            }
+
             default:
-              throw new Error(`lifecycle ${dependencyEntry.lifecycle} unknow`);
+              throw new Error(
+                `unknown lifecycle: ${dependencyEntry.lifecycle}`
+              );
           }
         }
       }
 
-      const instance = this.createAndCacheServiceInstance(
-        currId,
-        entry.ctor,
-        entry.staticArguments,
-        holder,
-        entry.lifecycle,
-        entry.supportsDelayedInstantiation
-      );
+      const instance =
+        cachedInstance && !dependencyOverridden
+          ? cachedInstance
+          : this.createAndCacheServiceInstance(
+              currId,
+              descriptor.ctor,
+              descriptor.staticArguments,
+              holder,
+              descriptor.lifecycle,
+              descriptor.supportsDelayedInstantiation
+            );
 
       visiting.delete(currId);
-      return instance;
+      return { instance, dependencyOverridden: dependencyOverridden };
     };
     const resolveWithCycleTracking = (
       currId: IServiceIdentifier<unknown>,
@@ -271,7 +352,7 @@ export class InstantiationService
     };
 
     try {
-      return resolve(id);
+      return resolve(id).instance;
     } catch (err) {
       if (err instanceof CyclicDependencyError) {
         throw CyclicDependencyError.resolve(err);

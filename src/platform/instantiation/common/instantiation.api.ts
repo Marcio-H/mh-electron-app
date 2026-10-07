@@ -31,7 +31,24 @@ export interface IInstantiationService extends BrandedService {
 }
 
 export interface IInstantiationNode {
-  getServiceEntry<T>(id: IServiceIdentifier<T>): ServiceEntry<T>;
+  parent?: IInstantiationNode;
+
+  getInstantiationEntry<T>(
+    id: IServiceIdentifier<T>,
+    includeOverwrittenServices?: boolean
+  ): [IInstantiationNode, ServiceEntry<T>, T | undefined];
+
+  isChildOf(from: IInstantiationNode): boolean;
+
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
+
+  //
+  getOrCreateServiceInstance<T>(
+    id: IServiceIdentifier<T>,
+    descriptor: ServiceEntry<T>
+  ): T;
+
+  //
   createAndCacheServiceInstance<T>(
     id: IServiceIdentifier<T>,
     ctor: Constructor<T, never[]>,
@@ -52,9 +69,25 @@ export interface IServiceIdentifier<T> {
 }
 
 export interface IServiceCollection {
-  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
-  get<T>(id: IServiceIdentifier<T>): ServiceEntry<T> | undefined;
+  save<T>(id: IServiceIdentifier<T>, instance: T): void;
+
+  get<T>(
+    id: IServiceIdentifier<T>,
+    includeOverwritten?: boolean
+  ): IServiceBinding<T> | undefined;
+  set<T>(
+    id: IServiceIdentifier<T>,
+    entry: ServiceEntry<T>,
+    overridden?: boolean
+  ): void;
+
   has(id: IServiceIdentifier<unknown>): boolean;
+}
+
+export interface IServiceBinding<T> {
+  descriptor: ServiceEntry<T>;
+  value: T | undefined;
+  overridden: boolean;
 }
 
 export interface IRegistrationOptions {
