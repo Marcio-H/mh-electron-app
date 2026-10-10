@@ -65,6 +65,19 @@ Hint: Remove the direct dependency.
 ]
 `;
 
+exports[`instantiation service > circular dependencies > should resolve parent-owned singleton when child override depends back on it 1`] = `
+[DI Error: Circular dependency detected between services!
+The container failed to resolve the graph due to the following cycle:
+┌→ ChildScopedCircularDependency (Cycle origin)
+│  ↓
+│  ScopedCircularOwner
+│  ↓
+└─ ChildScopedCircularDependency (Circular reference back to here ✖)
+Hint: Remove the direct dependency.
+
+]
+`;
+
 exports[`instantiation service > circular dependencies > should throw error on circular dependencies 1`] = `
 [DI Error: Circular dependency detected between services!
 The container failed to resolve the graph due to the following cycle:

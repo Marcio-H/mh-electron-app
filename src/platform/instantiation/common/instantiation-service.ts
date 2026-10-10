@@ -7,6 +7,7 @@ import {
   IInstantiationNode,
   IInstantiationService,
   InstantiationLifecycle,
+  IServiceBinding,
   IServiceCollection,
   IServiceIdentifier,
   IServicesAccessor,
@@ -38,7 +39,7 @@ export class InstantiationService
   }
 
   get parent(): IInstantiationNode | undefined {
-    return this.parent;
+    return this._parent;
   }
 
   createInstance<T>(descriptor: SyncDescriptor<T>): T;
@@ -75,16 +76,7 @@ export class InstantiationService
             );
           }
 
-          const [node, descriptor, instance] = this.getInstantiationEntry(
-            id,
-            false
-          );
-
-          if (instance) {
-            return instance;
-          }
-
-          return node.getOrCreateServiceInstance(id, descriptor);
+          return this._getOrCreateServiceInstance(id);
         }
       };
 
@@ -100,23 +92,20 @@ export class InstantiationService
     return new InstantiationService(services, this);
   }
 
-  getInstantiationEntry<T>(
-    id: IServiceIdentifier<T>,
-    includeOverwrittenServices = true
-  ): [IInstantiationNode, ServiceEntry<T>, T | undefined] {
-    const bucket = this.services.get(id, includeOverwrittenServices);
-
-    if (bucket) {
-      const { descriptor, value } = bucket;
-
-      return [this, descriptor, value];
+  findOwner<T>(id: IServiceIdentifier<T>): IInstantiationNode {
+    if (this.services.has(id)) {
+      return this;
     }
 
     if (!this._parent) {
       throw new Error(`unknown service '${id.toString()}'`);
     }
 
-    return this._parent.getInstantiationEntry(id);
+    return this._parent.findOwner(id);
+  }
+
+  getBinding<T>(id: IServiceIdentifier<T>): IServiceBinding<T> {
+    return this.services.get(id, true) as IServiceBinding<T>;
   }
 
   isChildOf(from: IInstantiationNode): boolean {
@@ -128,18 +117,6 @@ export class InstantiationService
     }
 
     return false;
-  }
-
-  getOrCreateServiceInstance<T>(
-    id: IServiceIdentifier<T>,
-    descriptor: ServiceEntry<T>
-  ): T {
-    // useValue descriptor
-    if (!(descriptor instanceof SyncDescriptor)) {
-      return descriptor;
-    }
-
-    return this._safeCreateAndCacheServiceInstance(id);
   }
 
   set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
@@ -234,13 +211,21 @@ export class InstantiationService
   }
 
   private _getOrCreateServiceInstance<T>(id: IServiceIdentifier<T>): T {
-    const [node, descriptor, instance] = this.getInstantiationEntry(id);
+    const node = this.findOwner(id);
+    const binding = node.getBinding(id);
+    const descriptor = binding.descriptor;
+    const instance = binding.value;
 
     if (instance && node == this) {
       return instance;
     }
 
-    return this.getOrCreateServiceInstance(id, descriptor);
+    // useValue descriptor
+    if (!(descriptor instanceof SyncDescriptor)) {
+      return descriptor;
+    }
+
+    return this._safeCreateAndCacheServiceInstance(id);
   }
 
   private _safeCreateAndCacheServiceInstance<T>(id: IServiceIdentifier<T>): T {
@@ -266,8 +251,9 @@ export class InstantiationService
     const resolve = <RT>(
       currId: IServiceIdentifier<RT>
     ): ResolvedInstance<RT> => {
-      const [node, descriptor, cachedInstance] =
-        this.getInstantiationEntry(currId);
+      const node = this.findOwner(currId);
+      const binding = node.getBinding(currId);
+      const descriptor = binding.descriptor;
 
       // useValue descriptor
       if (!(descriptor instanceof SyncDescriptor)) {
@@ -284,9 +270,9 @@ export class InstantiationService
       let dependencyOverridden = false;
 
       for (const dependency of getServiceDependencies(descriptor.ctor)) {
-        const [dependencyNode, dependencyEntry] = this.getInstantiationEntry(
-          dependency.id
-        );
+        const dependencyNode = this.findOwner(dependency.id);
+        const dependencyBinding = dependencyNode.getBinding(dependency.id);
+        const dependencyEntry = dependencyBinding.descriptor;
 
         if (node != dependencyNode && !node.isChildOf(dependencyNode)) {
           dependencyNode.set(currId, descriptor);
@@ -321,6 +307,7 @@ export class InstantiationService
         }
       }
 
+      const cachedInstance = binding.value;
       const instance =
         cachedInstance && !dependencyOverridden
           ? cachedInstance

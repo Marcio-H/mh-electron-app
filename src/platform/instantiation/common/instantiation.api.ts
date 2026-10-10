@@ -33,20 +33,13 @@ export interface IInstantiationService extends BrandedService {
 export interface IInstantiationNode {
   parent?: IInstantiationNode;
 
-  getInstantiationEntry<T>(
-    id: IServiceIdentifier<T>,
-    includeOverwrittenServices?: boolean
-  ): [IInstantiationNode, ServiceEntry<T>, T | undefined];
+  findOwner<T>(id: IServiceIdentifier<T>): IInstantiationNode;
+
+  getBinding<T>(id: IServiceIdentifier<T>): IServiceBinding<T>;
 
   isChildOf(from: IInstantiationNode): boolean;
 
   set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
-
-  //
-  getOrCreateServiceInstance<T>(
-    id: IServiceIdentifier<T>,
-    descriptor: ServiceEntry<T>
-  ): T;
 
   //
   createAndCacheServiceInstance<T>(

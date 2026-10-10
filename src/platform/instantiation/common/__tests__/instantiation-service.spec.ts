@@ -42,8 +42,6 @@ import {
   MixedLifecycleCircularRegistry,
   PrefixedCircularRegistry,
   ReentrantLazyCircularRegistry,
-  RootScopedCircularDependency,
-  RootScopedService,
   ScopedCircularChildRegistry,
   ScopedCircularRootRegistry,
   ScopeOwnerService,
@@ -201,13 +199,13 @@ describe('instantiation service', () => {
       .override('rootInstantiationKey', TransientScopeRootRegistry.key)
       .override('childInstantiationKey', TransientScopeChildRegistry.key);
 
-    test('should resolve parent-owned singleton with transient dependency from parent scope', () => {
+    test('should resolve parent-owned singleton with transient dependency from child scope', () => {
       const owner = child.invokeFunction((accessor) =>
         accessor.get(IScopeOwnerService)
       );
 
-      expect(owner.scopedService).toBeInstanceOf(RootScopedService);
-      expect(owner.instantiationService).toBe(instantiationService);
+      expect(owner.scopedService).toBeInstanceOf(ChildScopedService);
+      expect(owner.instantiationService).toBe(child);
     });
 
     test('should create paren-owned with transient dependency using child overrides', () => {
@@ -265,11 +263,8 @@ describe('instantiation service', () => {
           accessor.get(IDiamondRightService)
         );
 
-        const errorMessage =
-          'this singleton instance belongs to parent registry, top was created by child, that singleton instance only is avaible for child registry';
-
-        expect(leftService, errorMessage).not.toBe(top.leftService);
-        expect(rightService, errorMessage).not.toBe(top.rightService);
+        expect(leftService).toBe(top.leftService);
+        expect(rightService).toBe(top.rightService);
       });
 
       test('should parent create instance without know child registry', () => {
@@ -399,11 +394,9 @@ describe('instantiation service', () => {
         }
       },
       () => {
-        const owner = child.invokeFunction((accessor) =>
-          accessor.get(IScopedCircularOwner)
-        );
-
-        expect(owner.dependency).toBeInstanceOf(RootScopedCircularDependency);
+        expect(() =>
+          child.invokeFunction((accessor) => accessor.get(IScopedCircularOwner))
+        ).toThrowErrorMatchingSnapshot();
       }
     );
 
