@@ -64,15 +64,8 @@ export interface IServiceIdentifier<T> {
 export interface IServiceCollection {
   save<T>(id: IServiceIdentifier<T>, instance: T): void;
 
-  get<T>(
-    id: IServiceIdentifier<T>,
-    includeOverwritten?: boolean
-  ): IServiceBinding<T> | undefined;
-  set<T>(
-    id: IServiceIdentifier<T>,
-    entry: ServiceEntry<T>,
-    overridden?: boolean
-  ): void;
+  get<T>(id: IServiceIdentifier<T>): IServiceBinding<T> | undefined;
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
 
   has(id: IServiceIdentifier<unknown>): boolean;
 }
@@ -80,7 +73,6 @@ export interface IServiceCollection {
 export interface IServiceBinding<T> {
   descriptor: ServiceEntry<T>;
   value: T | undefined;
-  overridden: boolean;
 }
 
 export interface IRegistrationOptions {

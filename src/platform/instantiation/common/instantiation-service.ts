@@ -105,7 +105,7 @@ export class InstantiationService
   }
 
   getBinding<T>(id: IServiceIdentifier<T>): IServiceBinding<T> {
-    return this.services.get(id, true) as IServiceBinding<T>;
+    return this.services.get(id) as IServiceBinding<T>;
   }
 
   isChildOf(from: IInstantiationNode): boolean {
@@ -120,7 +120,7 @@ export class InstantiationService
   }
 
   set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
-    this.services.set(id, entry, true);
+    this.services.set(id, entry);
   }
 
   createAndCacheServiceInstance<T>(
@@ -131,9 +131,9 @@ export class InstantiationService
     lifecycle: InstantiationLifecycle,
     supportsDelayedInstantiation: boolean
   ): T {
-    const bucket = this.services.get(id, true);
+    const binding = this.services.get(id);
 
-    if (!bucket) {
+    if (!binding) {
       if (this._parent) {
         return this._parent.createAndCacheServiceInstance(
           id,
@@ -150,11 +150,11 @@ export class InstantiationService
       }
     }
 
-    if (bucket.value) {
-      return bucket.value;
+    if (binding.value) {
+      return binding.value;
     }
 
-    if (bucket.descriptor instanceof SyncDescriptor) {
+    if (binding.descriptor instanceof SyncDescriptor) {
       const instance = this._createServiceInstance(
         id,
         ctor,
@@ -170,7 +170,7 @@ export class InstantiationService
       return instance;
     }
 
-    return bucket.descriptor;
+    return binding.descriptor;
   }
 
   private _createInstance<T>(

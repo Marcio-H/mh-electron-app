@@ -23,29 +23,12 @@ export class ServiceCollection implements IServiceCollection {
     (this.entries.get(id) as { value: T | undefined }).value = instance;
   }
 
-  get<T>(
-    id: IServiceIdentifier<T>,
-    includeOverwritten = false
-  ): IServiceBinding<T> | undefined {
-    if (includeOverwritten) {
-      return this.entries.get(id) as IServiceBinding<T> | undefined;
-    }
-
-    const binding = this.entries.get(id);
-
-    if (binding?.overridden) {
-      return undefined;
-    }
-
-    return binding as IServiceBinding<T> | undefined;
+  get<T>(id: IServiceIdentifier<T>): IServiceBinding<T> | undefined {
+    return this.entries.get(id) as IServiceBinding<T> | undefined;
   }
 
-  set<T>(
-    id: IServiceIdentifier<T>,
-    entry: ServiceEntry<T>,
-    overridden = false
-  ): void {
-    this.entries.set(id, { descriptor: entry, value: undefined, overridden });
+  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
+    this.entries.set(id, { descriptor: entry, value: undefined });
   }
 
   has(id: IServiceIdentifier<unknown>): boolean {
