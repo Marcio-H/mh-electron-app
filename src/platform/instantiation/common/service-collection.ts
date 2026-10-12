@@ -1,3 +1,4 @@
+import { SyncDescriptor } from './descriptors';
 import type {
   IServiceCollection,
   IServiceIdentifier,
@@ -19,13 +20,17 @@ export class ServiceCollection implements IServiceCollection {
     }
   }
 
-  save<T>(id: IServiceIdentifier<T>, instance: T): void {
+  save<T>(
+    id: IServiceIdentifier<T>,
+    instance: T,
+    descriptor: SyncDescriptor<T>
+  ): void {
     const entry = this.entries.get(id);
 
     if (entry) {
       entry.value = instance;
     } else {
-      this.entries.set(id, { descriptor: undefined as never, value: instance });
+      this.entries.set(id, { descriptor, value: instance });
     }
   }
 

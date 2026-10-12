@@ -42,11 +42,8 @@ export interface IInstantiationNode {
   //
   createAndCacheServiceInstance<T>(
     id: IServiceIdentifier<T>,
-    ctor: Constructor<T, never[]>,
-    args: unknown[],
-    transientInstances: TransientInstances,
-    lifecycle: InstantiationLifecycle,
-    supportsDelayedInstantiation: boolean
+    descriptor: SyncDescriptor<T>,
+    transientInstances: TransientInstances
   ): T;
 }
 
@@ -60,8 +57,11 @@ export interface IServiceIdentifier<T> {
 }
 
 export interface IServiceCollection {
-  save<T>(id: IServiceIdentifier<T>, instance: T): void;
-
+  save<T>(
+    id: IServiceIdentifier<T>,
+    instance: T,
+    descriptor: SyncDescriptor<T>
+  ): void;
   get<T>(id: IServiceIdentifier<T>): IServiceBinding<T> | undefined;
   set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
 

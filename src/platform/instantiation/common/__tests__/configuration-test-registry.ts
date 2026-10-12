@@ -156,10 +156,29 @@ export class ScopedDiamondSharedService implements IDiamondSharedService {
   }
 }
 
+export class GrandChildScopedDiamondSharedService implements IDiamondSharedService {
+  //
+
+  //brand
+  declare _serviceBrand: undefined;
+
+  ping(): string {
+    return 'grand child scoped ping';
+  }
+}
+
 export const DeepScopedChildRegistry = registry([
   createRegistration({
     serviceIdentifier: IDiamondSharedService,
     useClass: ScopedDiamondSharedService,
+    options: { lifecycle: InstantiationLifecycle.Transient }
+  })
+]);
+
+export const DeepScopedGrandChildRegistry = registry([
+  createRegistration({
+    serviceIdentifier: IDiamondSharedService,
+    useClass: GrandChildScopedDiamondSharedService,
     options: { lifecycle: InstantiationLifecycle.Transient }
   })
 ]);

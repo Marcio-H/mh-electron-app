@@ -118,12 +118,14 @@ export class InstantiationService
 
   createAndCacheServiceInstance<T>(
     id: IServiceIdentifier<T>,
-    ctor: Constructor<T, never[]>,
-    args: unknown[] = [],
-    transientInstances: TransientInstances,
-    lifecycle: InstantiationLifecycle,
-    supportsDelayedInstantiation: boolean
+    descriptor: SyncDescriptor<T>,
+    transientInstances: TransientInstances
   ): T {
+    const ctor = descriptor.ctor;
+    const args = descriptor.staticArguments;
+    const lifecycle = descriptor.lifecycle;
+    const supportsDelayedInstantiation =
+      descriptor.supportsDelayedInstantiation;
     const binding = this.services.get(id);
 
     if (binding?.value) {
@@ -139,7 +141,7 @@ export class InstantiationService
     );
 
     if (lifecycle == InstantiationLifecycle.Singleton) {
-      this.services.save(id, instance);
+      this.services.save(id, instance, descriptor);
     }
 
     return instance;
@@ -188,7 +190,7 @@ export class InstantiationService
     const descriptor = binding.descriptor;
     const instance = binding.value;
 
-    if (instance && (node == this || !descriptor)) {
+    if (instance && node == this) {
       return instance;
     }
 
@@ -275,12 +277,17 @@ export class InstantiationService
           ? cachedInstance
           : instanceNode.createAndCacheServiceInstance(
               currId,
-              descriptor.ctor,
-              descriptor.staticArguments,
-              holder,
-              descriptor.lifecycle,
-              descriptor.supportsDelayedInstantiation
+              descriptor,
+              holder
             );
+
+      // cache here too for O(1) in future gets
+      if (
+        instanceNode != this &&
+        descriptor.lifecycle == InstantiationLifecycle.Singleton
+      ) {
+        this.services.save(currId, instance, descriptor);
+      }
 
       visiting.delete(currId);
       return { instance, instancedNode: instanceNode };

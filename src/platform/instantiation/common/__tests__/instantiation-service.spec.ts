@@ -55,7 +55,9 @@ import {
   ScopedDiamondSharedService,
   IDiamondSharedService,
   IDiamondLeftService,
-  IDiamondRightService
+  IDiamondRightService,
+  DeepScopedGrandChildRegistry,
+  GrandChildScopedDiamondSharedService
 } from './configuration-test-registry';
 import { TestRegistryKey } from './instantiation.test.api';
 import { getTestRegistry } from './instantiation.test.util';
@@ -217,11 +219,8 @@ describe('instantiation service', () => {
 
     describe('diamond services graph registry', () => {
       test
-        .override('rootInstantiationRegistry', () => new DiamondRegistry())
-        .override(
-          'childInstantiationRegistry',
-          () => new DeepScopedChildRegistry()
-        );
+        .override('rootInstantiationKey', DiamondRegistry.key)
+        .override('childInstantiationKey', DeepScopedChildRegistry.key);
 
       test(
         'should create diamond graph with transient dependency shared by two services as a cycle',
@@ -307,6 +306,23 @@ describe('instantiation service', () => {
             accessor.get(IDiamondLeftService)
           )
         ).toBe(leftService);
+      });
+
+      test('grandchild override cached dependency', () => {
+        const childLeftService = child.invokeFunction((acessor) =>
+          acessor.get(IDiamondLeftService)
+        );
+        const grandchild = child.createChild(
+          new DeepScopedGrandChildRegistry()
+        );
+        const grandChildLeftService = grandchild.invokeFunction((accessor) =>
+          accessor.get(IDiamondLeftService)
+        );
+
+        expect(grandChildLeftService).not.toBe(childLeftService);
+        expect(grandChildLeftService.sharedService).toBeInstanceOf(
+          GrandChildScopedDiamondSharedService
+        );
       });
     });
   });
