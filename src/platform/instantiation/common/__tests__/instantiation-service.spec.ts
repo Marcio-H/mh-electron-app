@@ -295,6 +295,19 @@ describe('instantiation service', () => {
           ScopedDiamondSharedService
         );
       });
+
+      test('grandchild should get right instance after child cached', () => {
+        const leftService = child.invokeFunction((acessor) =>
+          acessor.get(IDiamondLeftService)
+        );
+        const grandchild = child.createChild(new TransientScopeChildRegistry());
+
+        expect(
+          grandchild.invokeFunction((accessor) =>
+            accessor.get(IDiamondLeftService)
+          )
+        ).toBe(leftService);
+      });
     });
   });
 

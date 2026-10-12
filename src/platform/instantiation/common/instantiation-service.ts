@@ -85,9 +85,7 @@ export class InstantiationService
     }
   }
 
-  createChild(
-    services: IServiceCollection
-  ): IInstantiationService & IInstantiationNode {
+  createChild(services: IServiceCollection): IInstantiationService {
     return new InstantiationService(services, this);
   }
 
@@ -190,7 +188,7 @@ export class InstantiationService
     const descriptor = binding.descriptor;
     const instance = binding.value;
 
-    if (instance && node == this) {
+    if (instance && (node == this || !descriptor)) {
       return instance;
     }
 
@@ -219,7 +217,10 @@ export class InstantiationService
   }
 
   private _createAndCacheServiceInstance<T>(id: IServiceIdentifier<T>): T {
-    type ResolvedInstance<T> = { instance: T; dependencyOverridden: boolean };
+    type ResolvedInstance<T> = {
+      instance: T;
+      instancedNode: IInstantiationNode;
+    };
 
     const visiting = new Set<IServiceIdentifier<unknown>>();
     const resolve = <RT>(
@@ -231,7 +232,7 @@ export class InstantiationService
 
       // useValue descriptor
       if (!(descriptor instanceof SyncDescriptor)) {
-        return { instance: descriptor, dependencyOverridden: false };
+        return { instance: descriptor, instancedNode: node };
       }
 
       if (visiting.has(currId)) {
@@ -240,55 +241,39 @@ export class InstantiationService
 
       visiting.add(currId);
 
-      const holder = new Map<IServiceIdentifier<unknown>, unknown>();
-      let dependencyOverridden = false;
+      const holder = new Map<IServiceIdentifier<unknown>, unknown>(); //
+
+      let instanceNode = node;
 
       for (const dependency of getServiceDependencies(descriptor.ctor)) {
         const dependencyNode = this.findOwner(dependency.id);
         const dependencyBinding = dependencyNode.getBinding(dependency.id);
         const dependencyEntry = dependencyBinding.descriptor;
 
-        if (node != dependencyNode && !node.isChildOf(dependencyNode)) {
-          dependencyOverridden = true;
-        }
-
         if (dependencyEntry instanceof SyncDescriptor) {
-          switch (dependencyEntry.lifecycle) {
-            case InstantiationLifecycle.Singleton: {
-              const result = resolveWithCycleTracking(
-                dependency.id,
-                dependencyEntry
-              );
-              dependencyOverridden =
-                dependencyOverridden || result.dependencyOverridden;
-              break;
-            }
-            case InstantiationLifecycle.Transient: {
-              const result = resolveWithCycleTracking(
-                dependency.id,
-                dependencyEntry
-              );
+          const result = resolveWithCycleTracking(
+            dependency.id,
+            dependencyEntry
+          );
 
-              holder.set(dependency.id, result.instance);
-              dependencyOverridden =
-                dependencyOverridden || result.dependencyOverridden;
-              break;
-            }
+          if (
+            node != result.instancedNode &&
+            !node.isChildOf(result.instancedNode)
+          ) {
+            instanceNode = result.instancedNode;
+          }
 
-            default:
-              throw new Error(
-                `unknown lifecycle: ${dependencyEntry.lifecycle}`
-              );
+          if (dependencyEntry.lifecycle === InstantiationLifecycle.Transient) {
+            holder.set(dependency.id, result.instance);
           }
         }
       }
 
       const cachedInstance = binding.value;
-      const targetNode = dependencyOverridden ? this : node;
       const instance =
-        cachedInstance && !dependencyOverridden
+        cachedInstance && node == instanceNode
           ? cachedInstance
-          : targetNode.createAndCacheServiceInstance(
+          : instanceNode.createAndCacheServiceInstance(
               currId,
               descriptor.ctor,
               descriptor.staticArguments,
@@ -298,7 +283,7 @@ export class InstantiationService
             );
 
       visiting.delete(currId);
-      return { instance, dependencyOverridden: dependencyOverridden };
+      return { instance, instancedNode: instanceNode };
     };
     const resolveWithCycleTracking = (
       currId: IServiceIdentifier<unknown>,
