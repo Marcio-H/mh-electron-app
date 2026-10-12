@@ -20,7 +20,13 @@ export class ServiceCollection implements IServiceCollection {
   }
 
   save<T>(id: IServiceIdentifier<T>, instance: T): void {
-    (this.entries.get(id) as { value: T | undefined }).value = instance;
+    const entry = this.entries.get(id);
+
+    if (entry) {
+      entry.value = instance;
+    } else {
+      this.entries.set(id, { descriptor: undefined as never, value: instance });
+    }
   }
 
   get<T>(id: IServiceIdentifier<T>): IServiceBinding<T> | undefined {

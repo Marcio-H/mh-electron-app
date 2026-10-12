@@ -133,44 +133,23 @@ export class InstantiationService
   ): T {
     const binding = this.services.get(id);
 
-    if (!binding) {
-      if (this._parent) {
-        return this._parent.createAndCacheServiceInstance(
-          id,
-          ctor,
-          args,
-          transientInstances,
-          lifecycle,
-          supportsDelayedInstantiation
-        );
-      } else {
-        throw new Error(
-          `illegalState - creating UNKNOWN service instance ${ctor.name}`
-        );
-      }
-    }
-
-    if (binding.value) {
+    if (binding?.value) {
       return binding.value;
     }
 
-    if (binding.descriptor instanceof SyncDescriptor) {
-      const instance = this._createServiceInstance(
-        id,
-        ctor,
-        args,
-        transientInstances,
-        supportsDelayedInstantiation
-      );
+    const instance = this._createServiceInstance(
+      id,
+      ctor,
+      args,
+      transientInstances,
+      supportsDelayedInstantiation
+    );
 
-      if (lifecycle == InstantiationLifecycle.Singleton) {
-        this.services.save(id, instance);
-      }
-
-      return instance;
+    if (lifecycle == InstantiationLifecycle.Singleton) {
+      this.services.save(id, instance);
     }
 
-    return binding.descriptor;
+    return instance;
   }
 
   private _createInstance<T>(
@@ -275,18 +254,20 @@ export class InstantiationService
         const dependencyEntry = dependencyBinding.descriptor;
 
         if (node != dependencyNode && !node.isChildOf(dependencyNode)) {
-          dependencyNode.set(currId, descriptor);
           dependencyOverridden = true;
         }
 
         if (dependencyEntry instanceof SyncDescriptor) {
           switch (dependencyEntry.lifecycle) {
-            case InstantiationLifecycle.Singleton:
+            case InstantiationLifecycle.Singleton: {
+              const result = resolveWithCycleTracking(
+                dependency.id,
+                dependencyEntry
+              );
               dependencyOverridden =
-                dependencyOverridden ||
-                resolveWithCycleTracking(dependency.id, dependencyEntry)
-                  .dependencyOverridden;
+                dependencyOverridden || result.dependencyOverridden;
               break;
+            }
             case InstantiationLifecycle.Transient: {
               const result = resolveWithCycleTracking(
                 dependency.id,
@@ -308,10 +289,11 @@ export class InstantiationService
       }
 
       const cachedInstance = binding.value;
+      const targetNode = dependencyOverridden ? this : node;
       const instance =
         cachedInstance && !dependencyOverridden
           ? cachedInstance
-          : this.createAndCacheServiceInstance(
+          : targetNode.createAndCacheServiceInstance(
               currId,
               descriptor.ctor,
               descriptor.staticArguments,
