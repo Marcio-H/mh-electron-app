@@ -39,8 +39,6 @@ export interface IInstantiationNode {
 
   isChildOf(from: IInstantiationNode): boolean;
 
-  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void;
-
   //
   createAndCacheServiceInstance<T>(
     id: IServiceIdentifier<T>,

@@ -11,7 +11,6 @@ import {
   IServiceCollection,
   IServiceIdentifier,
   IServicesAccessor,
-  ServiceEntry,
   TransientInstances
 } from './instantiation.api';
 import { getServiceDependencies } from './instantiation.util';
@@ -117,10 +116,6 @@ export class InstantiationService
     }
 
     return false;
-  }
-
-  set<T>(id: IServiceIdentifier<T>, entry: ServiceEntry<T>): void {
-    this.services.set(id, entry);
   }
 
   createAndCacheServiceInstance<T>(
